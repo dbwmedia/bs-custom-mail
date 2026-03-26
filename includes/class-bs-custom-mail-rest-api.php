@@ -10,6 +10,11 @@
  * @subpackage Bs_Custom_Mail/includes
  */
 
+// Prevent direct access
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * REST API Handler Class
  *
@@ -290,6 +295,7 @@ class Bs_Custom_Mail_REST_API {
 					'methods'             => WP_REST_Server::EDITABLE,
 					'callback'            => array( $this, 'update_pdf_template' ),
 					'permission_callback' => array( $this, 'check_admin_permissions' ),
+					'args'                => $this->get_pdf_template_update_args(),
 				),
 				array(
 					'methods'             => WP_REST_Server::DELETABLE,
@@ -329,6 +335,33 @@ class Bs_Custom_Mail_REST_API {
 			'font_size' => array(
 				'type'    => 'integer',
 				'default' => 16,
+			),
+		);
+	}
+
+	/**
+	 * Get PDF template update arguments
+	 *
+	 * @since    2.0.0
+	 * @return   array
+	 */
+	private function get_pdf_template_update_args() {
+		return array(
+			'template_name' => array(
+				'type'              => 'string',
+				'sanitize_callback' => 'sanitize_text_field',
+			),
+			'attachment_id' => array(
+				'type' => 'integer',
+			),
+			'template_config' => array(
+				'type' => 'string',
+			),
+			'font_size' => array(
+				'type' => 'integer',
+			),
+			'is_active' => array(
+				'type' => 'boolean',
 			),
 		);
 	}
@@ -1198,6 +1231,9 @@ class Bs_Custom_Mail_REST_API {
 			);
 		}
 
+		$new_id = $wpdb->insert_id;
+		$request->set_param( 'id', $new_id );
+
 		return $this->get_pdf_template( $request );
 	}
 
@@ -1229,6 +1265,9 @@ class Bs_Custom_Mail_REST_API {
 		$update_data = array();
 		if ( $request->has_param( 'template_name' ) ) {
 			$update_data['template_name'] = sanitize_text_field( $request->get_param( 'template_name' ) );
+		}
+		if ( $request->has_param( 'attachment_id' ) ) {
+			$update_data['attachment_id'] = intval( $request->get_param( 'attachment_id' ) );
 		}
 		if ( $request->has_param( 'template_config' ) ) {
 			$update_data['template_config'] = $request->get_param( 'template_config' );

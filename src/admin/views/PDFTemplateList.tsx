@@ -25,7 +25,7 @@ export function PDFTemplateList({ onNavigate }: Props) {
       const response = await apiFetch({
         path: 'bs-custom-mail/v1/pdf-templates',
       })
-      setTemplates((response as { templates: PDFTemplate[] }).templates || [])
+      setTemplates((response as PDFTemplate[]) || [])
     } catch (error) {
       console.error('Error fetching PDF templates:', error)
     } finally {
@@ -253,7 +253,7 @@ export function PDFTemplateList({ onNavigate }: Props) {
                     isImage ? (
                       <img
                         src={template.attachment_url}
-                        alt={template.name}
+                        alt={template.template_name}
                         style={{
                           width: '100%',
                           height: '100%',
@@ -298,7 +298,7 @@ export function PDFTemplateList({ onNavigate }: Props) {
                       marginBottom: '4px',
                     }}
                   >
-                    {template.name}
+                    {template.template_name}
                   </h3>
                   <p style={{ fontSize: '13px', color: '#6b7280', margin: 0 }}>
                     {isImage ? 'Bild' : 'PDF'}

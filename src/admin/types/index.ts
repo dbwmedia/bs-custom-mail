@@ -94,10 +94,12 @@ export interface VoucherStats {
 
 export interface PDFTemplate {
 	id?: number;
-	name: string;
+	template_name: string;
+	template_key: string;
 	attachment_id: number;
 	attachment_url?: string;
-	config: string;
+	template_config: PDFTemplateConfig | string;
+	font_size?: number;
 	is_active?: boolean;
 	created_at?: string;
 	updated_at?: string;

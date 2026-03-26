@@ -4,20 +4,7 @@
 import { useState, useEffect, useCallback } from '@wordpress/element'
 import { __ } from '@wordpress/i18n'
 import apiFetch from '@wordpress/api-fetch'
-import { PDFTemplate } from '../types'
-
-interface Position {
-  x: number
-  y: number
-  fontSize: number
-}
-
-interface PDFTemplateConfig {
-  wert: Position
-  code: Position
-  name: Position
-  expiry: Position
-}
+import { PDFTemplate, PDFTemplateConfig } from '../types'
 
 interface Props {
   template?: PDFTemplate
@@ -48,7 +35,10 @@ export function PDFTemplateEditor({
   onSave,
   onDelete,
 }: Props) {
-  const [templateName, setTemplateName] = useState(template?.name || '')
+  const [templateName, setTemplateName] = useState(
+    template?.template_name || '',
+  )
+  const [templateKey, setTemplateKey] = useState(template?.template_key || '')
   const [attachmentId, setAttachmentId] = useState(template?.attachment_id || 0)
   const [attachmentUrl, setAttachmentUrl] = useState(
     template?.attachment_url || '',
@@ -59,9 +49,13 @@ export function PDFTemplateEditor({
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (template?.config) {
+    if (template?.template_config) {
       try {
-        setConfig(JSON.parse(template.config))
+        const parsed =
+          typeof template.template_config === 'string'
+            ? JSON.parse(template.template_config)
+            : template.template_config
+        setConfig({ ...defaultConfig, ...parsed })
       } catch {
         setConfig(defaultConfig)
       }
@@ -133,12 +127,23 @@ export function PDFTemplateEditor({
   const handleSaveClick = async () => {
     setSaving(true)
     try {
+      // Generate template_key from name if not set
+      const key =
+        templateKey ||
+        templateName
+          .toLowerCase()
+          .replace(/\s+/g, '_')
+          .replace(/[^a-z0-9_]/g, '')
+
       const data = {
-        id: template?.id,
-        name: templateName,
-        attachment_id: attachmentId,
-        config: JSON.stringify(config),
+        template_name: templateName,
+        template_key: key,
+        attachment_id: parseInt(attachmentId.toString(), 10),
+        template_config: JSON.stringify(config),
+        font_size: 16,
       }
+
+      console.log('Saving PDF template:', { mode, data })
 
       if (mode === 'edit' && template?.id) {
         const response = await apiFetch({
@@ -146,6 +151,7 @@ export function PDFTemplateEditor({
           method: 'POST',
           data,
         })
+        console.log('Update response:', response)
         onSave(response as PDFTemplate)
       } else {
         const response = await apiFetch({
@@ -153,11 +159,13 @@ export function PDFTemplateEditor({
           method: 'POST',
           data,
         })
+        console.log('Create response:', response)
         onSave(response as PDFTemplate)
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving PDF template:', error)
-      alert(__('Fehler beim Speichern', 'bs-custom-mail'))
+      const errorMessage = error?.message || __('Unbekannter Fehler', 'bs-custom-mail')
+      alert(__('Fehler beim Speichern: ', 'bs-custom-mail') + errorMessage)
     } finally {
       setSaving(false)
     }
@@ -365,12 +373,22 @@ export function PDFTemplateEditor({
                   display: 'block',
                 }}
               >
-                {__('Name', 'bs-custom-mail')}
+                {__('Name', 'bs-custom-mail')} *
               </label>
               <input
                 type='text'
                 value={templateName}
-                onChange={(e) => setTemplateName(e.target.value)}
+                onChange={(e) => {
+                  setTemplateName(e.target.value)
+                  if (!templateKey) {
+                    setTemplateKey(
+                      e.target.value
+                        .toLowerCase()
+                        .replace(/\s+/g, '_')
+                        .replace(/[^a-z0-9_]/g, ''),
+                    )
+                  }
+                }}
                 placeholder={__('z.B. Standard Gutschein', 'bs-custom-mail')}
                 style={{
                   width: '100%',
@@ -382,6 +400,52 @@ export function PDFTemplateEditor({
               />
             </div>
 
+            {mode === 'create' && (
+              <div>
+                <label
+                  style={{
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    color: '#374151',
+                    marginBottom: '8px',
+                    display: 'block',
+                  }}
+                >
+                  {__('Template Key', 'bs-custom-mail')} *
+                </label>
+                <input
+                  type='text'
+                  value={templateKey}
+                  onChange={(e) =>
+                    setTemplateKey(
+                      e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''),
+                    )
+                  }
+                  placeholder='standard_gutschein'
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    fontFamily: 'monospace',
+                  }}
+                />
+                <p
+                  style={{
+                    margin: '4px 0 0',
+                    fontSize: '12px',
+                    color: '#6b7280',
+                  }}
+                >
+                  {__(
+                    'Nur Kleinbuchstaben, Zahlen und Unterstriche',
+                    'bs-custom-mail',
+                  )}
+                </p>
+              </div>
+            )}
+
             <div>
               <label
                 style={{
@@ -392,7 +456,7 @@ export function PDFTemplateEditor({
                   display: 'block',
                 }}
               >
-                {__('Hintergrund', 'bs-custom-mail')}
+                {__('Hintergrund', 'bs-custom-mail')} *
               </label>
               {attachmentUrl ? (
                 <div
@@ -432,7 +496,7 @@ export function PDFTemplateEditor({
                         textOverflow: 'ellipsis',
                       }}
                     >
-                      {template?.name || 'Template'}
+                      {template?.template_name || 'Template'}
                     </p>
                     <p
                       style={{
@@ -662,16 +726,18 @@ export function PDFTemplateEditor({
           </button>
           <button
             onClick={handleSaveClick}
-            disabled={saving || !templateName || !attachmentId}
+            disabled={saving || !templateName || !attachmentId || !templateKey}
             style={{
               padding: '14px',
               background:
-                saving || !templateName || !attachmentId ? '#9ca3af' : '#000',
+                saving || !templateName || !attachmentId || !templateKey
+                  ? '#9ca3af'
+                  : '#000',
               color: '#fff',
               border: 'none',
               borderRadius: '10px',
               cursor:
-                saving || !templateName || !attachmentId
+                saving || !templateName || !attachmentId || !templateKey
                   ? 'not-allowed'
                   : 'pointer',
               fontWeight: 600,
