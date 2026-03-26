@@ -15,7 +15,7 @@ interface UseNoticesReturn {
 }
 
 export function useNotices(): UseNoticesReturn {
-	const [notices, setNotices] = useState<Notice[]>( [] );
+	const [ notices, setNotices ] = useState<Notice[]>( [] );
 
 	const addNotice = useCallback( ( status: Notice['status'], message: string ) => {
 		const id = Date.now().toString() + Math.random().toString( 36 ).substr( 2, 9 );

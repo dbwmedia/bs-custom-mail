@@ -85,7 +85,6 @@ export function AttachmentUploader( { attachments, onChange }: AttachmentUploade
 								variant="tertiary"
 								isDestructive
 								onClick={ () => removeAttachment( attachment.id ) }
-								label={ __( 'Entfernen', 'bs-custom-mail' ) }
 							>
 								×
 							</Button>

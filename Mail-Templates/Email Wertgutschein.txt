@@ -1,0 +1,46 @@
+﻿📧 Gutschein – Wertgutschein Bootsschule Berlin
+Betreff: Dein Gutschein – Bootsschule Berlin-Köpenick
+Hallo {{Kundenname}},
+vielen Dank für deine Bestellung eines Wertgutscheins bei der Bootsschule Berlin Köpenick.
+Rechnungsnummer: {{Rechnungsnummer}}
+Wir freuen uns sehr, dass du einen Gutschein für unsere Kurse und Trainings verschenken möchtest.
+________________
+
+
+🎁 Gutscheincode
+Gutscheincode: {{Gutscheincode}}
+Gutscheinwert: {{Gutscheinwert}}
+Der Gutscheincode kann bei allen Produkten in unserem Webshop eingelöst werden.
+Der Gutscheinwert wird während des Bezahlvorgangs automatisch mit dem gebuchten Kurs oder Training verrechnet.
+Sollte der Kurs teurer sein als der Gutscheinwert, kann der Restbetrag einfach im Shop bezahlt werden.
+________________
+
+
+⚓ Einlösbare Kurse & Trainings
+Der Wertgutschein kann flexibel für alle Angebote unserer Bootsschule verwendet werden, zum Beispiel:
+• Sportbootführerschein Binnen
+• Sportbootführerschein See
+• SBF Binnen & See Kombikurs
+• Funkkurse (SRC / UBI)
+• Skippertraining
+• Schleusentraining
+________________
+
+
+📞 Fragen
+Wenn du Fragen zum Gutschein oder zur Einlösung hast, erreichst du uns jederzeit unter:
+📞 0163 / 6298589
+Erreichbarkeit
+Mo – Fr
+09:00 – 18:00 Uhr
+________________
+
+
+Wir wünschen viel Freude beim Verschenken und freuen uns darauf, den Beschenkten bald bei uns begrüßen zu dürfen.
+Liebe Grüße
+Pascal Groß
+Bootsschule Berlin Köpenick
+Grünauer Straße 3
+12557 Berlin
+📞 +49 (0)163 6298589
+✉️ info@berlin-bootsschule.de

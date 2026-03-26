@@ -137,7 +137,7 @@ class Bs_Custom_Mail_Admin {
 
 			wp_enqueue_style(
 				'bs-custom-mail-admin-app-style',
-				plugin_dir_url( dirname( __FILE__ ) ) . 'build/admin.css',
+				plugin_dir_url( dirname( __FILE__ ) ) . 'build/style-admin.css',
 				array(),
 				$asset['version']
 			);

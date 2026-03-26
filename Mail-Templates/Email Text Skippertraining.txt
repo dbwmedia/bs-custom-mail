@@ -1,0 +1,125 @@
+﻿📧 Buchungsbestätigung – Skippertraining
+Betreff: Deine Buchung – {{Produktname}}
+Hallo {{Kundenname}},
+vielen Dank für deine Buchung des {{Produktname}} bei der Bootsschule Berlin Köpenick.
+Rechnungsnummer: {{Rechnungsnummer}}
+Hier findest du alle wichtigen Informationen zu deinem Training.
+________________
+
+
+📍 Treffpunkt
+Bootsschule Berlin Köpenick
+Grünauer Straße 3
+12557 Berlin-Köpenick
+Der Treffpunkt für das Skippertraining befindet sich auf dem Gelände der Marinekameradschaft.
+Folge einfach den Schildern zum Yachthafen der Marinekameradschaft.
+________________
+
+
+🚤 Inhalte des Trainings
+Im Skippertraining vertiefst du deine praktischen Fähigkeiten und gewinnst mehr Sicherheit beim Führen eines Motorbootes.
+Mögliche Trainingsinhalte sind zum Beispiel:
+• An- und Ablegemanöver
+• Wenden auf engem Raum
+• Person-über-Bord-Manöver
+• sicheres Manövrieren im Hafen
+• Leinenarbeit und Knotenkunde
+• Vorbereitung auf besondere Situationen auf dem Wasser
+Die Inhalte können individuell auf deinen Wissensstand und deine Wünsche abgestimmt werden.
+________________
+
+
+⚓ Training mit eigenem oder unserem Boot
+Das Skippertraining kann flexibel stattfinden:
+• auf unserem Schulungsboot
+• oder auf deinem eigenen Boot
+So können wir gezielt auf dein Boot und deine persönlichen Anforderungen eingehen.
+________________
+
+
+📞 Terminvereinbarung
+Der Termin für das Training wird individuell mit dir abgestimmt.
+Bitte kontaktiere uns hierfür unter:
+📞 0163 / 6298589
+Erreichbarkeit
+Mo – Fr
+09:00 – 18:00 Uhr
+________________
+
+
+Wir freuen uns darauf, dich bald bei uns auf dem Wasser begrüßen zu dürfen.
+Liebe Grüße
+Pascal Groß
+Bootsschule Berlin Köpenick
+Grünauer Straße 3
+12557 Berlin
+📞 +49 (0)163 6298589
+✉️ info@berlin-bootsschule.de
+________________
+
+
+📧 Gutschein – Skippertraining
+Betreff: Dein Gutschein – Skippertraining
+Hallo {{Kundenname}},
+vielen Dank für deine Bestellung eines Gutscheins für das {{Produktname}} bei der Bootsschule Berlin Köpenick.
+Rechnungsnummer: {{Rechnungsnummer}}
+Wir freuen uns sehr, dass du dieses Training verschenken möchtest.
+________________
+
+
+🎁 Gutscheincode
+Gutscheincode: {{Gutscheincode}}
+Der Gutscheincode kann später im Webshop bei der Buchung des Skippertrainings eingegeben werden.
+Der Gutscheinwert wird anschließend automatisch mit dem Trainingspreis verrechnet.
+👉 Wichtig
+Bitte verschenke den Gutscheincode zusammen mit den folgenden Informationen, damit der Beschenkte alle wichtigen Details zum Training erhält.
+________________
+
+
+📍 Treffpunkt
+Bootsschule Berlin Köpenick
+Grünauer Straße 3
+12557 Berlin-Köpenick
+Der Treffpunkt für das Skippertraining befindet sich auf dem Gelände der Marinekameradschaft.
+Folge einfach den Schildern zum Yachthafen der Marinekameradschaft.
+________________
+
+
+🚤 Inhalte des Trainings
+Im Skippertraining werden praktische Fähigkeiten auf dem Wasser gezielt trainiert.
+Mögliche Trainingsinhalte sind zum Beispiel:
+• An- und Ablegemanöver
+• Wenden auf engem Raum
+• Person-über-Bord-Manöver
+• sicheres Manövrieren im Hafen
+• Leinenarbeit und Knotenkunde
+Die Inhalte können individuell auf den Wissensstand und die Wünsche des Teilnehmers abgestimmt werden.
+________________
+
+
+⚓ Training mit eigenem oder unserem Boot
+Das Training kann flexibel stattfinden:
+• auf unserem Schulungsboot
+• oder auf dem eigenen Boot
+So können wir gezielt auf das jeweilige Boot und die persönlichen Anforderungen eingehen.
+________________
+
+
+📞 Terminvereinbarung
+Der Termin für das Training wird individuell abgestimmt.
+Bitte kontaktiere uns hierfür unter:
+📞 0163 / 6298589
+Erreichbarkeit
+Mo – Fr
+09:00 – 18:00 Uhr
+________________
+
+
+Wir wünschen viel Freude beim Verschenken und freuen uns darauf, den Beschenkten bald auf dem Wasser begrüßen zu dürfen.
+Liebe Grüße
+Pascal Groß
+Bootsschule Berlin Köpenick
+Grünauer Straße 3
+12557 Berlin
+📞 +49 (0)163 6298589
+✉️ info@berlin-bootsschule.de

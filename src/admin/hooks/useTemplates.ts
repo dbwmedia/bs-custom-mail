@@ -8,30 +8,23 @@ import { Template } from '../types';
 interface UseTemplatesReturn {
 	templates: Template[];
 	isLoading: boolean;
-	error: string | null;
-	refetch: () => void;
 	createTemplate: ( template: Omit<Template, 'id' | 'created_at' | 'updated_at'> ) => Promise<Template>;
 	updateTemplate: ( key: string, data: Partial<Template> ) => Promise<Template>;
 	deleteTemplate: ( key: string ) => Promise<void>;
-	getTemplate: ( key: string ) => Promise<Template>;
 	sendTestEmail: ( key: string, email: string ) => Promise<{ success: boolean; message: string }>;
 }
 
 export function useTemplates(): UseTemplatesReturn {
-	const [templates, setTemplates] = useState<Template[]>( [] );
-	const [isLoading, setIsLoading] = useState( false );
-	const [error, setError] = useState<string | null>( null );
+	const [ templates, setTemplates ] = useState<Template[]>( [] );
+	const [ isLoading, setIsLoading ] = useState( false );
 
 	const fetchTemplates = useCallback( async () => {
 		setIsLoading( true );
-		setError( null );
 		try {
 			const data = await apiFetch<Template[]>( {
 				path: '/bs-custom-mail/v1/templates',
 			} );
 			setTemplates( data );
-		} catch ( err ) {
-			setError( err instanceof Error ? err.message : 'Failed to fetch templates' );
 		} finally {
 			setIsLoading( false );
 		}
@@ -39,7 +32,7 @@ export function useTemplates(): UseTemplatesReturn {
 
 	useEffect( () => {
 		fetchTemplates();
-	}, [fetchTemplates] );
+	}, [ fetchTemplates ] );
 
 	const createTemplate = async (
 		template: Omit<Template, 'id' | 'created_at' | 'updated_at'>
@@ -47,32 +40,17 @@ export function useTemplates(): UseTemplatesReturn {
 		const response = await apiFetch<Template>( {
 			path: '/bs-custom-mail/v1/templates',
 			method: 'POST',
-			data: {
-				...template,
-				attachments: Array.isArray( template.attachments )
-					? template.attachments.map( ( a ) => a.id )
-					: [],
-			},
+			data: template,
 		} );
 		await fetchTemplates();
 		return response;
 	};
 
-	const updateTemplate = async (
-		key: string,
-		data: Partial<Template>
-	): Promise<Template> => {
-		const updateData = { ...data };
-		if ( Array.isArray( data.attachments ) ) {
-			(updateData as any).attachments = data.attachments.map( ( a: any ) =>
-				typeof a === 'object' ? a.id : a
-			);
-		}
-
+	const updateTemplate = async ( key: string, data: Partial<Template> ): Promise<Template> => {
 		const response = await apiFetch<Template>( {
 			path: `/bs-custom-mail/v1/templates/${ key }`,
 			method: 'PUT',
-			data: updateData,
+			data,
 		} );
 		await fetchTemplates();
 		return response;
@@ -84,12 +62,6 @@ export function useTemplates(): UseTemplatesReturn {
 			method: 'DELETE',
 		} );
 		await fetchTemplates();
-	};
-
-	const getTemplate = async ( key: string ): Promise<Template> => {
-		return apiFetch<Template>( {
-			path: `/bs-custom-mail/v1/templates/${ key }`,
-		} );
 	};
 
 	const sendTestEmail = async (
@@ -106,12 +78,9 @@ export function useTemplates(): UseTemplatesReturn {
 	return {
 		templates,
 		isLoading,
-		error,
-		refetch: fetchTemplates,
 		createTemplate,
 		updateTemplate,
 		deleteTemplate,
-		getTemplate,
 		sendTestEmail,
 	};
 }

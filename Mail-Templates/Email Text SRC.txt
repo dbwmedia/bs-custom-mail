@@ -1,0 +1,147 @@
+﻿📧 Buchungsbestätigung – SRC Funkkurs
+Betreff: Deine Buchung – SRC Funkkurs
+________________
+
+
+Hallo {{Kundenname}},
+vielen Dank für deine Buchung des UBI Funkkurses bei der Bootsschule Berlin Köpenick.
+Kursdatum: {{Kursdatum}}
+Rechnungsnummer: {{Rechnungsnummer}}
+Hier findest du alle wichtigen Informationen zu deinem Kurs.
+________________
+
+
+📍 Standort
+Bootsschule Berlin Köpenick
+Ehrlichstraße 62
+10318 Berlin
+Da wir beim Funkkurs immer in sehr kleinen Gruppen arbeiten, findet der Kurs in unseren kleinen Schulungsräumen statt.
+________________
+
+
+📋 Prüfungsanmeldung & Unterlagen
+Die Prüfung für den UBI Funkschein meldest du selbstständig beim Deutschen Motoryachtverband (DMYV) an.
+Die benötigten Formulare und Informationen zur Prüfung findest du im Anhang dieser E-Mail.
+Für die Prüfung werden in der Regel folgende Unterlagen benötigt:
+* Personalausweis oder Reisepass
+
+* Passbild
+
+* Nachweis über die gezahlte Prüfungsgebühr
+
+Die genauen Anforderungen erklären wir dir selbstverständlich auch noch einmal im Kurs.
+________________
+
+
+📚 Vorbereitung
+Wir empfehlen eine Vorbereitung über App oder Buch.
+Empfohlene Lernmaterialien findest du auf unserer Website:
+👉 Link zu Lernmaterial
+________________
+
+
+🎙 Praxis im Kurs
+Während des Kurses üben wir gemeinsam:
+• typische Funksprüche
+• Routinefunk
+• Not-, Dringlichkeits- und Sicherheitsmeldungen
+• Bedienung der Funkanlage
+Geübt wird direkt an modernen Funkgeräten (ICOM M330) – der gleichen Anlage, die auch bei der Prüfung verwendet wird.
+________________
+
+
+📞 Fragen zum Kurs
+Wenn du Fragen hast oder weitere Informationen benötigst, erreichst du uns unter:
+📞 0163 / 6298589
+Mo – Fr
+09:00 – 18:00 Uhr
+________________
+
+
+Wir freuen uns darauf, dich bald bei uns begrüßen zu dürfen.
+Liebe Grüße
+Pascal Groß
+Bootsschule Berlin Köpenick
+Grünauer Straße 3
+12557 Berlin
+📞 +49 (0)163 6298589
+✉️ info@berlin-bootsschule.de
+
+
+
+
+
+
+📧 Gutschein – SRC Funkkurs
+Betreff: Dein Gutschein – SRC Funkkurs
+________________
+
+
+Hallo {{Kundenname}},
+vielen Dank für deine Bestellung eines SRC Funkkurs Gutscheins bei der Bootsschule Berlin Köpenick.
+Rechnungsnummer: {{Rechnungsnummer}}
+Wir freuen uns sehr, dass du unseren Kurs verschenken möchtest.
+________________
+
+
+🎁 Gutscheincode
+Gutscheincode: {{Gutscheincode}}
+Der Gutscheincode kann später im Webshop bei der Buchung des gewünschten SRC Funkkurses eingegeben werden.
+Der Gutscheinwert wird dann automatisch mit dem Kursbetrag verrechnet.
+👉 Wichtig:
+Bitte verschenke den Gutscheincode zusammen mit den folgenden Informationen, damit der Beschenkte alle wichtigen Details zum Kurs erhält.
+________________
+
+
+📍 Standort
+Bootsschule Berlin Köpenick
+Ehrlichstraße 62
+10318 Berlin
+Da wir beim Funkkurs immer in sehr kleinen Gruppen arbeiten, findet der Kurs in unseren kleinen Schulungsräumen statt.
+________________
+
+
+📋 Prüfungsanmeldung & Unterlagen
+Die Prüfung für den SRC Funkschein meldet der Teilnehmer selbstständig beim Deutschen Motoryachtverband (DMYV) an.
+Die benötigten Formulare und Informationen zur Prüfung findest du im Anhang dieser E-Mail.
+Für die Prüfung werden in der Regel folgende Unterlagen benötigt:
+• Personalausweis oder Reisepass
+• Passbild
+• Nachweis über die gezahlte Prüfungsgebühr
+Die genauen Anforderungen erklären wir selbstverständlich auch noch einmal im Kurs.
+________________
+
+
+📚 Vorbereitung
+Wir empfehlen eine Vorbereitung über App oder Buch.
+Empfohlene Lernmaterialien findest du auf unserer Website:
+👉 Link zu Lernmaterial
+________________
+
+
+🎙 Praxis im Kurs
+Während des Kurses üben wir gemeinsam:
+• typische Funksprüche
+• Routinefunk
+• Not-, Dringlichkeits- und Sicherheitsmeldungen
+• Bedienung der Funkanlage
+Geübt wird direkt an modernen Funkgeräten (ICOM M330) – der gleichen Anlage, die auch bei der Prüfung verwendet wird.
+________________
+
+
+📞 Fragen zum Kurs
+Wenn Fragen entstehen oder Unterstützung bei der Buchung benötigt wird, erreichst du uns unter:
+📞 0163 / 6298589
+Mo – Fr
+09:00 – 18:00 Uhr
+________________
+
+
+Wir wünschen viel Freude beim Verschenken und freuen uns darauf, den Beschenkten bald bei uns begrüßen zu dürfen.
+Liebe Grüße
+Pascal Groß
+Bootsschule Berlin Köpenick
+Grünauer Straße 3
+12557 Berlin
+📞 +49 (0)163 6298589
+✉️ info@berlin-bootsschule.de

@@ -4,7 +4,6 @@
 import { useState } from '@wordpress/element';
 import { Card, CardHeader, CardBody } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
-// Icons import removed
 
 const PLACEHOLDERS = [
 	{ code: '{{customer_name}}', label: __( 'Vorname', 'bs-custom-mail' ) },
@@ -35,7 +34,6 @@ export function PlaceholderHelp( { onCopy }: PlaceholderHelpProps ) {
 	return (
 		<Card>
 			<CardHeader>
-				<span className="dashicons dashicons-lightbulb"></span>
 				<h3>{ __( 'Platzhalter', 'bs-custom-mail' ) }</h3>
 			</CardHeader>
 			<CardBody>

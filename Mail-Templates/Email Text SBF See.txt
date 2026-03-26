@@ -1,0 +1,169 @@
+﻿📧 Mail 2 – Buchungsbestätigung SBF See 
+Betreff: Deine Buchung – {{Produktname}}
+Hallo {{Kundenname}},
+vielen Dank für deine Buchung der {{Produktname}} bei der Bootsschule Berlin-Köpenick.
+Kursdatum: {{Kursdatum}}
+Rechnungsnummer: {{Rechnungsnummer}}
+Hier findest du alle wichtigen Informationen zur Vorbereitung auf deinen Kurs.
+________________
+
+
+📍 Standort
+Bootsschule Berlin Köpenick
+Grünauer Straße 3
+12557 Berlin-Köpenick
+Die theoretische & praktische Ausbildung findet in unseren Schulungsräumen der Marinekameradschaft statt.
+Folge einfach den Schildern zum Yachthafen der Marinekameradschaft.
+________________
+
+
+📋 Wichtige Dokumente
+Im Anhang findest du alle Dokumente, die für deine Prüfung benötigt werden. Bitte fülle diese vollständig aus.
+⚠️ Wichtig
+Die Prüfungsunterlagen müssen spätestens 7 Tage vor der Prüfung beim Deutschen Motoryachtverband (DMYV) eingegangen sein.
+________________
+
+
+📚 Lernmaterialien
+Die passenden Lernmaterialien findest du auf unserer Website.
+👉 Link zu Lernmaterial
+Bitte beachte:
+Beim Lernen mit der App müssen die Segelfragen nur beim Segelführerschein gelernt werden. 
+________________
+
+
+🧭 Navigation
+Für die Prüfung zum SBF See benötigst du zwingend:
+• Navigationsbesteck (link)
+• Seekarte / Kartenmaterial (link)
+Bitte bringe diese Materialien unbedingt zum Theoriekurs und zur Prüfung mit.
+________________
+
+
+🎥 Video-Materialien
+Zur zusätzlichen Vorbereitung stehen dir Lernvideos zur Verfügung:
+• Dropbox-Sammlung (Link)
+• YouTube Video (Link)
+________________
+
+
+🩺 Ärztliches Attest
+Für das ärztliche Attest hast du zwei Möglichkeiten.
+Hausarzt
+Du lässt das Attest von deinem Hausarzt ausfüllen. Häufig wirst du zusätzlich zu einem Optiker und Hörakustiker geschickt, um die entsprechenden Tests durchführen zu lassen.
+Online-Untersuchung
+Alternativ kannst du die Untersuchung bequem online über NauticFit durchführen.
+Mit dem Code Bootsschule-Berlin erhältst du 5 € Rabatt.
+👉 Weitere Infos zur ärztlichen Untersuchung (Link)
+________________
+
+
+🚤 Praxis & Termine
+Die Termine für die Praxisfahrstunden stimmen wir individuell mit dir ab.
+Bitte kontaktiere hierzu deinen Praxisfahrlehrer:
+📞 0163 / 6298589
+Erreichbarkeit
+Mo – Fr
+09:00 – 18:00 Uhr
+________________
+
+
+Wir freuen uns darauf, dich bald bei uns begrüßen zu dürfen.
+Liebe Grüße
+Pascal Groß
+Bootsschule Berlin Köpenick
+
+
+
+
+
+
+📧 Gutschein – SBF See Ausbildung
+Betreff: Dein Gutschein – SBF See Ausbildung
+________________
+
+
+Hallo {{Kundenname}},
+vielen Dank für deine Bestellung eines Gutscheins für die {{Produktname}} bei der Bootsschule Berlin Köpenick.
+Rechnungsnummer: {{Rechnungsnummer}}
+Wir freuen uns sehr, dass du unseren Kurs verschenken möchtest.
+________________
+
+
+🎁 Gutscheincode
+Gutscheincode: {{Gutscheincode}}
+Der Gutscheincode kann später im Webshop bei der Buchung der SBF See Ausbildung eingegeben werden.
+Der Gutscheinwert wird anschließend automatisch mit dem Kursbetrag verrechnet.
+👉 Wichtig
+Bitte verschenke den Gutscheincode zusammen mit den folgenden Informationen, damit der Beschenkte alle wichtigen Details zur Ausbildung erhält.
+________________
+
+
+📍 Standort
+Bootsschule Berlin Köpenick
+Grünauer Straße 3
+12557 Berlin-Köpenick
+Die theoretische und praktische Ausbildung findet in unseren Schulungsräumen der Marinekameradschaft statt.
+Folge einfach den Schildern zum Yachthafen der Marinekameradschaft.
+________________
+
+
+📋 Wichtige Dokumente
+Im Anhang findest du alle Dokumente, die für die Prüfung benötigt werden. Diese müssen vom Teilnehmer vollständig ausgefüllt werden.
+⚠️ Wichtig
+Die Prüfungsunterlagen müssen spätestens 7 Tage vor der Prüfung beim Deutschen Motoryachtverband (DMYV) eingegangen sein.
+________________
+
+
+📚 Lernmaterialien
+Die passenden Lernmaterialien findest du auf unserer Website.
+👉 Link zu Lernmaterial
+Bitte beachte:
+Beim Lernen mit der App müssen die Segelfragen nur beim Segelführerschein gelernt werden.
+________________
+
+
+🧭 Navigation
+Für die Prüfung zum SBF See benötigst du zwingend:
+• Navigationsbesteck (Link)
+• Seekarte / Kartenmaterial (Link)
+Bitte bringe diese Materialien unbedingt zum Theoriekurs und zur Prüfung mit.
+________________
+
+
+🎥 Video-Materialien
+Zur zusätzlichen Vorbereitung stehen Lernvideos zur Verfügung:
+• Dropbox-Sammlung (Link)
+• YouTube Video (Link)
+________________
+
+
+🩺 Ärztliches Attest
+Für das ärztliche Attest gibt es zwei Möglichkeiten.
+Hausarzt
+Das Attest wird vom Hausarzt ausgefüllt. Häufig erfolgt zusätzlich eine Überweisung zu einem Optiker und Hörakustiker, um die entsprechenden Tests durchführen zu lassen.
+Online-Untersuchung
+Alternativ kann die Untersuchung bequem online über NauticFit durchgeführt werden.
+Mit dem Code Bootsschule-Berlin erhält der Teilnehmer 5 € Rabatt.
+👉 Weitere Infos zur ärztlichen Untersuchung (Link)
+________________
+
+
+🚤 Praxis & Termine
+Die Termine für die Praxisfahrstunden werden individuell abgestimmt.
+Bitte kontaktiere hierzu deinen Praxisfahrlehrer:
+📞 0163 / 6298589
+Erreichbarkeit
+Mo – Fr
+09:00 – 18:00 Uhr
+________________
+
+
+Wir wünschen viel Freude beim Verschenken und freuen uns darauf, den Beschenkten bald bei uns begrüßen zu dürfen.
+Liebe Grüße
+Pascal Groß
+Bootsschule Berlin Köpenick
+Grünauer Straße 3
+12557 Berlin
+📞 +49 (0)163 6298589
+✉️ info@berlin-bootsschule.de
