@@ -194,7 +194,7 @@ class Bs_Custom_Mail_Voucher {
 		$table_name = $wpdb->prefix . 'bs_custom_mail_pdf_templates';
 		$templates = $wpdb->get_results( "SELECT id, template_name FROM $table_name WHERE is_active = 1 ORDER BY template_name ASC" );
 
-		echo '<p class="form-field"><label for="_bs_custom_mail_voucher_pdf_template">' . esc_html__( 'PDF Vorlage', 'bs-custom-mail' ) . '</label>';
+		echo '<p class="form-field"><label for="_bs_custom_mail_voucher_pdf_template">' . esc_html__( 'Gutschein-Vorlage', 'bs-custom-mail' ) . '</label>';
 		echo '<select name="_bs_custom_mail_voucher_pdf_template" id="_bs_custom_mail_voucher_pdf_template" class="select short">';
 		echo '<option value="">' . esc_html__( '-- Keine Vorlage --', 'bs-custom-mail' ) . '</option>';
 
@@ -204,7 +204,7 @@ class Bs_Custom_Mail_Voucher {
 		}
 
 		echo '</select>';
-		echo '<span class="description">' . esc_html__( 'Wählen Sie eine PDF-Vorlage für den Gutschein.', 'bs-custom-mail' ) . '</span>';
+		echo '<span class="description">' . esc_html__( 'Wählen Sie eine Vorlage (PDF, JPG oder PNG). Beim Kauf wird automatisch eine PDF generiert.', 'bs-custom-mail' ) . '</span>';
 		echo '</p>';
 	}
 

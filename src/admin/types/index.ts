@@ -94,20 +94,24 @@ export interface VoucherStats {
 
 export interface PDFTemplate {
 	id?: number;
-	template_name: string;
-	template_key: string;
+	name: string;
 	attachment_id: number;
 	attachment_url?: string;
-	template_config: PDFTemplateConfig | string;
-	font_size: number;
-	is_active: boolean;
+	config: string;
+	is_active?: boolean;
 	created_at?: string;
 	updated_at?: string;
 }
 
+export interface Position {
+	x: number;
+	y: number;
+	fontSize?: number;
+}
+
 export interface PDFTemplateConfig {
-	wert?: { x: number; y: number };
-	code?: { x: number; y: number };
-	name?: { x: number; y: number };
-	expiry?: { x: number; y: number };
+	wert: Position;
+	code: Position;
+	name: Position;
+	expiry: Position;
 }

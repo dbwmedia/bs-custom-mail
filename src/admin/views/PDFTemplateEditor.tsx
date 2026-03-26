@@ -1,404 +1,733 @@
 /**
- * PDF Template Editor with Drag & Drop
+ * PDF Template Editor - Modern Black/White Design
  */
-import { useState, useRef, useCallback } from '@wordpress/element';
-import { __ } from '@wordpress/i18n';
-import { PDFTemplate, PDFTemplateConfig } from '../types';
-import { useNotices } from '../hooks';
+import { useState, useEffect, useCallback } from '@wordpress/element'
+import { __ } from '@wordpress/i18n'
+import apiFetch from '@wordpress/api-fetch'
+import { PDFTemplate } from '../types'
 
-interface PDFTemplateEditorProps {
-	template: PDFTemplate | null;
-	onSave: ( template: PDFTemplate ) => void;
-	onCancel: () => void;
+interface Position {
+  x: number
+  y: number
+  fontSize: number
 }
 
-const DEFAULT_CONFIG: PDFTemplateConfig = {
-	wert: { x: 105, y: 100 },
-	code: { x: 105, y: 130 },
-	name: { x: 105, y: 160 },
-	expiry: { x: 105, y: 190 },
-};
+interface PDFTemplateConfig {
+  wert: Position
+  code: Position
+  name: Position
+  expiry: Position
+}
 
-export function PDFTemplateEditor( { template, onSave, onCancel }: PDFTemplateEditorProps ) {
-	const [ templateName, setTemplateName ] = useState( template?.template_name || '' );
-	const [ templateKey, setTemplateKey ] = useState( template?.template_key || '' );
-	const [ attachmentId, setAttachmentId ] = useState< number >( template?.attachment_id || 0 );
-	const [ attachmentUrl, setAttachmentUrl ] = useState( template?.attachment_url || '' );
-	const [ fontSize, setFontSize ] = useState( template?.font_size || 16 );
-	const [ config, setConfig ] = useState< PDFTemplateConfig >(
-		template?.template_config
-			? ( typeof template.template_config === 'string'
-				? JSON.parse( template.template_config )
-				: template.template_config )
-			: DEFAULT_CONFIG
-	);
-	const [ isDragging, setIsDragging ] = useState< string | null >( null );
-	const [ dragOffset, setDragOffset ] = useState( { x: 0, y: 0 } );
-	const canvasRef = useRef< HTMLDivElement >( null );
-	const { notices, addNotice, removeNotice } = useNotices();
+interface Props {
+  template?: PDFTemplate
+  mode: 'create' | 'edit'
+  onCancel: () => void
+  onSave: (template: PDFTemplate) => void
+  onDelete?: (template: PDFTemplate) => void
+}
 
-	const fields = [
-		{ key: 'wert', label: __( 'Wert', 'bs-custom-mail' ), color: '#22c55e', ...config.wert! },
-		{ key: 'code', label: __( 'Code', 'bs-custom-mail' ), color: '#3b82f6', ...config.code! },
-		{ key: 'name', label: __( 'Name', 'bs-custom-mail' ), color: '#6b7280', ...config.name! },
-		{ key: 'expiry', label: __( 'Ablauf', 'bs-custom-mail' ), color: '#8b5cf6', ...config.expiry! },
-	];
+const defaultConfig: PDFTemplateConfig = {
+  wert: { x: 50, y: 50, fontSize: 24 },
+  code: { x: 50, y: 100, fontSize: 16 },
+  name: { x: 50, y: 150, fontSize: 18 },
+  expiry: { x: 50, y: 200, fontSize: 14 },
+}
 
-	const handleSelectPDF = () => {
-		// @ts-ignore - wp.media is global
-		const frame = wp.media( {
-			title: __( 'PDF Vorlage wählen', 'bs-custom-mail' ),
-			button: { text: __( 'Auswählen', 'bs-custom-mail' ) },
-			multiple: false,
-			library: { type: 'application/pdf' },
-		} );
+const fields = [
+  { key: 'wert' as const, label: 'Gutscheinwert', color: '#000' },
+  { key: 'code' as const, label: 'Gutscheincode', color: '#333' },
+  { key: 'name' as const, label: 'Empfänger', color: '#666' },
+  { key: 'expiry' as const, label: 'Ablaufdatum', color: '#999' },
+]
 
-		frame.on( 'select', () => {
-			const attachment = frame.state().get( 'selection' ).first().toJSON();
-			setAttachmentId( attachment.id );
-			setAttachmentUrl( attachment.url );
-		} );
+export function PDFTemplateEditor({
+  template,
+  mode,
+  onCancel,
+  onSave,
+  onDelete,
+}: Props) {
+  const [templateName, setTemplateName] = useState(template?.name || '')
+  const [attachmentId, setAttachmentId] = useState(template?.attachment_id || 0)
+  const [attachmentUrl, setAttachmentUrl] = useState(
+    template?.attachment_url || '',
+  )
+  const [config, setConfig] = useState<PDFTemplateConfig>(defaultConfig)
+  const [isDragging, setIsDragging] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [loading, setLoading] = useState(false)
 
-		frame.open();
-	};
+  useEffect(() => {
+    if (template?.config) {
+      try {
+        setConfig(JSON.parse(template.config))
+      } catch {
+        setConfig(defaultConfig)
+      }
+    }
+  }, [template])
 
-	const handleMouseDown = useCallback(
-		( e: React.MouseEvent, fieldKey: string ) => {
-			e.preventDefault();
-			const rect = canvasRef.current?.getBoundingClientRect();
-			if ( ! rect ) return;
+  const isImage = attachmentUrl.match(/\.(jpg|jpeg|png|webp)$/i)
 
-			const field = fields.find( ( f ) => f.key === fieldKey );
-			if ( ! field ) return;
+  const handleSelectFile = () => {
+    // @ts-ignore - WordPress media uploader
+    const mediaUploader = wp.media({
+      title: __('PDF Template auswählen', 'bs-custom-mail'),
+      button: { text: __('Verwenden', 'bs-custom-mail') },
+      multiple: false,
+      library: {
+        type: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'],
+      },
+    })
 
-			setIsDragging( fieldKey );
-			setDragOffset( {
-				x: e.clientX - rect.left - ( config[ fieldKey as keyof PDFTemplateConfig ]?.x || 0 ) * 2,
-				y: e.clientY - rect.top - ( config[ fieldKey as keyof PDFTemplateConfig ]?.y || 0 ) * 2,
-			} );
-		},
-		[ config, fields ]
-	);
+    mediaUploader.on('select', () => {
+      const attachment = mediaUploader.state().get('selection').first().toJSON()
+      setAttachmentId(attachment.id)
+      setAttachmentUrl(attachment.url)
+      setLoading(false)
+    })
 
-	const handleMouseMove = useCallback(
-		( e: React.MouseEvent ) => {
-			if ( ! isDragging || ! canvasRef.current ) return;
+    mediaUploader.open()
+  }
 
-			const rect = canvasRef.current.getBoundingClientRect();
-			const newX = e.clientX - rect.left - dragOffset.x;
-			const newY = e.clientY - rect.top - dragOffset.y;
+  const handleMouseDown = (field: string) => (e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsDragging(field)
+  }
 
-			const constrainedX = Math.max( 0, Math.min( 420, newX ) );
-			const constrainedY = Math.max( 0, Math.min( 594, newY ) );
+  const handleMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (!isDragging) return
 
-			setConfig( ( prev ) => ( {
-				...prev,
-				[ isDragging ]: { x: constrainedX / 2, y: constrainedY / 2 },
-			} ) );
-		},
-		[ isDragging, dragOffset ]
-	);
+      const canvas = document.getElementById('pdf-canvas')
+      if (!canvas) return
 
-	const handleMouseUp = useCallback( () => {
-		setIsDragging( null );
-	}, [] );
+      const rect = canvas.getBoundingClientRect()
+      const x = ((e.clientX - rect.left) / rect.width) * 210
+      const y = ((e.clientY - rect.top) / rect.height) * 297
 
-	const handleSaveClick = () => {
-		if ( ! templateName || ! templateKey || ! attachmentId ) {
-			addNotice( 'error', __( 'Bitte füllen Sie alle Pflichtfelder aus.', 'bs-custom-mail' ) );
-			return;
-		}
+      setConfig((prev) => ({
+        ...prev,
+        [isDragging]: { ...prev[isDragging as keyof PDFTemplateConfig], x, y },
+      }))
+    },
+    [isDragging],
+  )
 
-		onSave( {
-			id: template?.id,
-			template_name: templateName,
-			template_key: templateKey,
-			attachment_id: attachmentId,
-			template_config: JSON.stringify( config ),
-			font_size: fontSize,
-			is_active: true,
-		} as PDFTemplate );
-	};
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(null)
+  }, [])
 
-	return (
-		<div className="bs-pdf-template-editor">
-			<div className="bs-page-header">
-				<h2>
-					{ template
-						? __( 'PDF-Vorlage bearbeiten', 'bs-custom-mail' )
-						: __( 'Neue PDF-Vorlage', 'bs-custom-mail' ) }
-				</h2>
-			</div>
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+    }
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isDragging, handleMouseMove, handleMouseUp])
 
-			{ notices.map( ( notice ) => (
-				<div
-					key={ notice.id }
-					className={ `notice notice-${ notice.status } is-dismissible` }
-				>
-					<p>{ notice.message }</p>
-					<button
-						className="notice-dismiss"
-						onClick={ () => removeNotice( notice.id ) }
-					>
-						<span className="screen-reader-text">
-							{ __( 'Dismiss this notice.', 'bs-custom-mail' ) }
-						</span>
-					</button>
-				</div>
-			) ) }
+  const handleSaveClick = async () => {
+    setSaving(true)
+    try {
+      const data = {
+        id: template?.id,
+        name: templateName,
+        attachment_id: attachmentId,
+        config: JSON.stringify(config),
+      }
 
-			<div
-				style={ {
-					display: 'grid',
-					gridTemplateColumns: '1fr 320px',
-					gap: '24px',
-				} }
-			>
-				<div>
-					{ attachmentUrl ? (
-						<div
-							ref={ canvasRef }
-							style={ {
-								width: '420px',
-								height: '594px',
-								background: '#f3f4f6',
-								border: '2px solid #e5e7eb',
-								borderRadius: '8px',
-								position: 'relative',
-								cursor: isDragging ? 'grabbing' : 'default',
-								margin: '0 auto',
-							} }
-							onMouseMove={ handleMouseMove }
-							onMouseUp={ handleMouseUp }
-							onMouseLeave={ handleMouseUp }
-						>
-							<div
-								style={ {
-									position: 'absolute',
-									inset: '0',
-									display: 'flex',
-									alignItems: 'center',
-									justifyContent: 'center',
-									color: '#9ca3af',
-									fontSize: '14px',
-								} }
-							>
-								{ __( 'PDF Hintergrund', 'bs-custom-mail' ) }
-							</div>
+      if (mode === 'edit' && template?.id) {
+        const response = await apiFetch({
+          path: `bs-custom-mail/v1/pdf-templates/${template.id}`,
+          method: 'POST',
+          data,
+        })
+        onSave(response as PDFTemplate)
+      } else {
+        const response = await apiFetch({
+          path: 'bs-custom-mail/v1/pdf-templates',
+          method: 'POST',
+          data,
+        })
+        onSave(response as PDFTemplate)
+      }
+    } catch (error) {
+      console.error('Error saving PDF template:', error)
+      alert(__('Fehler beim Speichern', 'bs-custom-mail'))
+    } finally {
+      setSaving(false)
+    }
+  }
 
-							{ fields.map( ( field ) => {
-								const pos = config[ field.key as keyof PDFTemplateConfig ] || { x: 0, y: 0 };
-								return (
-									<div
-										key={ field.key }
-										style={ {
-											position: 'absolute',
-											left: pos.x * 2,
-											top: pos.y * 2,
-											padding: '8px 16px',
-											background: field.color,
-											color: 'white',
-											borderRadius: '6px',
-											cursor: isDragging === field.key ? 'grabbing' : 'grab',
-											fontSize: '14px',
-											fontWeight: 500,
-											boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-											userSelect: 'none',
-											zIndex: isDragging === field.key ? 10 : 1,
-										} }
-										onMouseDown={ ( e ) => handleMouseDown( e, field.key ) }
-									>
-										{ field.label }
-										<div
-											style={ {
-												position: 'absolute',
-												bottom: '-20px',
-												left: '50%',
-												transform: 'translateX(-50%)',
-												fontSize: '10px',
-												color: '#666',
-												whiteSpace: 'nowrap',
-											} }
-										>
-											{ pos.x.toFixed( 0 ) }mm, { pos.y.toFixed( 0 ) }mm
-										</div>
-									</div>
-								);
-							} ) }
-						</div>
-					) : (
-						<div
-							style={ {
-								width: '420px',
-								height: '594px',
-								background: '#f9fafb',
-								border: '2px dashed #d1d5db',
-								borderRadius: '8px',
-								display: 'flex',
-								flexDirection: 'column',
-								alignItems: 'center',
-								justifyContent: 'center',
-								margin: '0 auto',
-							} }
-						>
-							<div style={ { fontSize: '48px', marginBottom: '16px' } }>📄</div>
-							<p style={ { color: '#6b7280', marginBottom: '16px' } }>
-								{ __( 'Bitte wählen Sie ein PDF aus', 'bs-custom-mail' ) }
-							</p>
-							<button className="button button-primary" onClick={ handleSelectPDF }>
-								{ __( 'PDF auswählen', 'bs-custom-mail' ) }
-							</button>
-						</div>
-					) }
+  // Spinner component
+  const Spinner = () => (
+    <div
+      style={{
+        width: '16px',
+        height: '16px',
+        border: '2px solid rgba(255,255,255,0.3)',
+        borderTop: '2px solid #fff',
+        borderRadius: '50%',
+        animation: 'spin 1s linear infinite',
+      }}
+    />
+  )
 
-					<div
-						style={ {
-							marginTop: '24px',
-							display: 'flex',
-							justifyContent: 'center',
-							gap: '16px',
-						} }
-					>
-						{ fields.map( ( field ) => (
-							<div
-								key={ field.key }
-								style={ { display: 'flex', alignItems: 'center', gap: '6px' } }
-							>
-								<div
-									style={ {
-										width: '12px',
-										height: '12px',
-										background: field.color,
-										borderRadius: '3px',
-									} }
-								/>
-								<span style={ { fontSize: '12px', color: '#4b5563' } }>
-									{ field.label }
-								</span>
-							</div>
-						) ) }
-					</div>
-				</div>
+  return (
+    <div
+      style={{ display: 'grid', gap: '24px', gridTemplateColumns: '1fr 320px' }}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div
+          id='pdf-canvas'
+          style={{
+            aspectRatio: '210/297',
+            background: '#fff',
+            border: '1px solid #e5e7eb',
+            position: 'relative',
+            overflow: 'hidden',
+            borderRadius: '12px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+          }}
+        >
+          {attachmentUrl ? (
+            <>
+              {isImage ? (
+                <img
+                  src={attachmentUrl}
+                  alt='Template'
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'contain',
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: '100%',
+                    background: '#f9fafb',
+                    color: '#6b7280',
+                  }}
+                >
+                  <div style={{ textAlign: 'center' }}>
+                    <div
+                      style={{
+                        marginBottom: '16px',
+                        opacity: 0.5,
+                        fontSize: '48px',
+                      }}
+                    >
+                      ⊞
+                    </div>
+                    <p>PDF Template hochgeladen</p>
+                  </div>
+                </div>
+              )}
 
-				<div
-					style={ {
-						background: '#fff',
-						borderRadius: '12px',
-						padding: '20px',
-						boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-						height: 'fit-content',
-					} }
-				>
-					<h3 style={ { margin: '0 0 20px 0', fontSize: '16px' } }>
-						{ __( 'Einstellungen', 'bs-custom-mail' ) }
-					</h3>
+              {loading && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    background: 'rgba(255,255,255,0.9)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      border: '2px solid #e5e7eb',
+                      borderTop: '2px solid #000',
+                      borderRadius: '50%',
+                      animation: 'spin 1s linear infinite',
+                    }}
+                  />
+                </div>
+              )}
 
-					<div style={ { marginBottom: '16px' } }>
-						<label style={ { display: 'block', marginBottom: '6px', fontWeight: 500 } }>
-							{ __( 'Vorlagenname', 'bs-custom-mail' ) } *
-						</label>
-						<input
-							type="text"
-							value={ templateName }
-							onChange={ ( e ) => setTemplateName( e.target.value ) }
-							className="regular-text"
-							placeholder={ __( 'z.B. Standard Gutschein', 'bs-custom-mail' ) }
-						/>
-					</div>
+              {fields.map((field) => (
+                <div
+                  key={field.key}
+                  style={{
+                    position: 'absolute',
+                    left: `${(config[field.key].x / 210) * 100}%`,
+                    top: `${(config[field.key].y / 297) * 100}%`,
+                    transform: 'translate(-50%, -50%)',
+                    padding: '8px 16px',
+                    background: isDragging === field.key ? '#000' : '#fff',
+                    color: isDragging === field.key ? '#fff' : field.color,
+                    border: '1px solid #000',
+                    borderRadius: '6px',
+                    cursor: 'move',
+                    fontSize: `${config[field.key].fontSize}px`,
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap',
+                    boxShadow:
+                      isDragging === field.key
+                        ? '0 4px 12px rgba(0,0,0,0.2)'
+                        : '0 2px 8px rgba(0,0,0,0.1)',
+                    zIndex: isDragging === field.key ? 100 : 10,
+                  }}
+                  onMouseDown={handleMouseDown(field.key)}
+                >
+                  {field.label}
+                </div>
+              ))}
+            </>
+          ) : (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '100%',
+                background: '#f9fafb',
+                border: '2px dashed #e5e7eb',
+                borderRadius: '8px',
+                margin: '24px',
+              }}
+            >
+              <button
+                onClick={handleSelectFile}
+                style={{
+                  padding: '16px 32px',
+                  background: '#000',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 500,
+                }}
+              >
+                {__('Hintergrund auswählen', 'bs-custom-mail')}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
 
-					<div style={ { marginBottom: '16px' } }>
-						<label style={ { display: 'block', marginBottom: '6px', fontWeight: 500 } }>
-							{ __( 'Template Key', 'bs-custom-mail' ) } *
-						</label>
-						<input
-							type="text"
-							value={ templateKey }
-							onChange={ ( e ) => setTemplateKey( e.target.value ) }
-							className="regular-text"
-							placeholder={ __( 'z.B. standard_gutschein', 'bs-custom-mail' ) }
-							disabled={ !! template?.id }
-						/>
-						<p className="description">
-							{ __( 'Eindeutiger technischer Name (nur Kleinbuchstaben, Zahlen, Unterstriche)', 'bs-custom-mail' ) }
-						</p>
-					</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div
+          style={{
+            background: '#fff',
+            borderRadius: '12px',
+            border: '1px solid #e5e7eb',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              padding: '20px',
+              borderBottom: '1px solid #e5e7eb',
+              background: '#fafafa',
+            }}
+          >
+            <h3
+              style={{
+                margin: 0,
+                fontSize: '14px',
+                fontWeight: 700,
+                color: '#000',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+              }}
+            >
+              {__('Template Einstellungen', 'bs-custom-mail')}
+            </h3>
+          </div>
+          <div
+            style={{
+              padding: '20px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '20px',
+            }}
+          >
+            <div>
+              <label
+                style={{
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  color: '#374151',
+                  marginBottom: '8px',
+                  display: 'block',
+                }}
+              >
+                {__('Name', 'bs-custom-mail')}
+              </label>
+              <input
+                type='text'
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+                placeholder={__('z.B. Standard Gutschein', 'bs-custom-mail')}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                }}
+              />
+            </div>
 
-					<div style={ { marginBottom: '16px' } }>
-						<label style={ { display: 'block', marginBottom: '6px', fontWeight: 500 } }>
-							{ __( 'PDF Datei', 'bs-custom-mail' ) } *
-						</label>
-						{ attachmentUrl ? (
-							<div
-								style={ {
-									background: '#f0f9ff',
-									padding: '12px',
-									borderRadius: '6px',
-									marginBottom: '8px',
-								} }
-							>
-								<div style={ { display: 'flex', alignItems: 'center', gap: '8px' } }>
-									<span>📄</span>
-									<a
-										href={ attachmentUrl }
-										target="_blank"
-										rel="noopener noreferrer"
-										style={ { flex: 1 } }
-									>
-										{ attachmentUrl.split( '/' ).pop() }
-									</a>
-									<button
-										className="button-link"
-										onClick={ () => {
-											setAttachmentId( 0 );
-											setAttachmentUrl( '' );
-										} }
-										style={ { color: '#dc2626' } }
-									>
-										{ __( 'Entfernen', 'bs-custom-mail' ) }
-									</button>
-								</div>
-							</div>
-						) : null }
-						<button className="button" onClick={ handleSelectPDF }>
-							{ attachmentUrl
-								? __( 'PDF ändern', 'bs-custom-mail' )
-								: __( 'PDF auswählen', 'bs-custom-mail' ) }
-						</button>
-					</div>
+            <div>
+              <label
+                style={{
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  color: '#374151',
+                  marginBottom: '8px',
+                  display: 'block',
+                }}
+              >
+                {__('Hintergrund', 'bs-custom-mail')}
+              </label>
+              {attachmentUrl ? (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    padding: '12px',
+                    background: '#f9fafb',
+                    borderRadius: '8px',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      background: '#fff',
+                      borderRadius: '6px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: '1px solid #e5e7eb',
+                      fontSize: '20px',
+                    }}
+                  >
+                    {isImage ? '🖼️' : '📄'}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p
+                      style={{
+                        margin: 0,
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        color: '#000',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {template?.name || 'Template'}
+                    </p>
+                    <p
+                      style={{
+                        margin: '2px 0 0',
+                        fontSize: '12px',
+                        color: '#6b7280',
+                      }}
+                    >
+                      {isImage ? 'Bild' : 'PDF'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setAttachmentId(0)
+                      setAttachmentUrl('')
+                    }}
+                    style={{
+                      padding: '6px',
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#ef4444',
+                      cursor: 'pointer',
+                      borderRadius: '4px',
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={handleSelectFile}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    background: '#f9fafb',
+                    border: '1px dashed #d1d5db',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    color: '#6b7280',
+                  }}
+                >
+                  🖼️ {__('Datei auswählen', 'bs-custom-mail')}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
 
-					<div style={ { marginBottom: '16px' } }>
-						<label style={ { display: 'block', marginBottom: '6px', fontWeight: 500 } }>
-							{ __( 'Schriftgröße', 'bs-custom-mail' ) }
-						</label>
-						<input
-							type="number"
-							value={ fontSize }
-							onChange={ ( e ) => setFontSize( parseInt( e.target.value ) || 16 ) }
-							min="8"
-							max="72"
-							style={ { width: '80px' } }
-						/>
-						<span style={ { marginLeft: '8px' } }>pt</span>
-					</div>
+        <div
+          style={{
+            background: '#fff',
+            borderRadius: '12px',
+            border: '1px solid #e5e7eb',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              padding: '20px',
+              borderBottom: '1px solid #e5e7eb',
+              background: '#fafafa',
+            }}
+          >
+            <h3
+              style={{
+                margin: 0,
+                fontSize: '14px',
+                fontWeight: 700,
+                color: '#000',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+              }}
+            >
+              {__('Textfelder Position', 'bs-custom-mail')}
+            </h3>
+          </div>
+          <div style={{ padding: '20px' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '12px',
+                background: '#f9fafb',
+                borderRadius: '8px',
+                marginBottom: '16px',
+              }}
+            >
+              <span>🖱️</span>
+              <span style={{ fontSize: '13px', color: '#374151' }}>
+                {__('Felder per Drag & Drop positionieren', 'bs-custom-mail')}
+              </span>
+            </div>
 
-					<div
-						style={ {
-							marginTop: '24px',
-							paddingTop: '16px',
-							borderTop: '1px solid #e5e7eb',
-							display: 'flex',
-							gap: '8px',
-						} }
-					>
-						<button className="button button-primary" onClick={ handleSaveClick }>
-							{ __( 'Speichern', 'bs-custom-mail' ) }
-						</button>
-						<button className="button" onClick={ onCancel }>
-							{ __( 'Abbrechen', 'bs-custom-mail' ) }
-						</button>
-					</div>
-				</div>
-			</div>
-		</div>
-	);
+            <div
+              style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}
+            >
+              {fields.map((field) => (
+                <div
+                  key={field.key}
+                  style={{
+                    padding: '12px',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: '8px',
+                        height: '8px',
+                        background: field.color,
+                        borderRadius: '50%',
+                      }}
+                    />
+                    <span style={{ fontSize: '13px', fontWeight: 600 }}>
+                      {field.label}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: '8px',
+                    }}
+                  >
+                    <input
+                      type='number'
+                      value={Math.round(config[field.key].x)}
+                      onChange={(e) =>
+                        setConfig((prev) => ({
+                          ...prev,
+                          [field.key]: {
+                            ...prev[field.key],
+                            x: parseInt(e.target.value) || 0,
+                          },
+                        }))
+                      }
+                      placeholder='X'
+                      style={{
+                        padding: '8px',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '6px',
+                        fontSize: '13px',
+                      }}
+                    />
+                    <input
+                      type='number'
+                      value={Math.round(config[field.key].y)}
+                      onChange={(e) =>
+                        setConfig((prev) => ({
+                          ...prev,
+                          [field.key]: {
+                            ...prev[field.key],
+                            y: parseInt(e.target.value) || 0,
+                          },
+                        }))
+                      }
+                      placeholder='Y'
+                      style={{
+                        padding: '8px',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '6px',
+                        fontSize: '13px',
+                      }}
+                    />
+                  </div>
+                  <div style={{ marginTop: '8px' }}>
+                    <input
+                      type='number'
+                      value={config[field.key].fontSize}
+                      onChange={(e) =>
+                        setConfig((prev) => ({
+                          ...prev,
+                          [field.key]: {
+                            ...prev[field.key],
+                            fontSize: parseInt(e.target.value) || 12,
+                          },
+                        }))
+                      }
+                      placeholder='Schriftgröße'
+                      style={{
+                        width: '100%',
+                        padding: '8px',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '6px',
+                        fontSize: '13px',
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px', flexDirection: 'column' }}>
+          <button
+            onClick={onCancel}
+            disabled={saving}
+            style={{
+              padding: '14px',
+              background: '#f3f4f6',
+              color: '#374151',
+              border: 'none',
+              borderRadius: '10px',
+              cursor: 'pointer',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+            }}
+          >
+            ← {__('Zurück', 'bs-custom-mail')}
+          </button>
+          <button
+            onClick={handleSaveClick}
+            disabled={saving || !templateName || !attachmentId}
+            style={{
+              padding: '14px',
+              background:
+                saving || !templateName || !attachmentId ? '#9ca3af' : '#000',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '10px',
+              cursor:
+                saving || !templateName || !attachmentId
+                  ? 'not-allowed'
+                  : 'pointer',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+            }}
+          >
+            {saving ? (
+              <>
+                <Spinner />
+                {__('Speichern...', 'bs-custom-mail')}
+              </>
+            ) : (
+              <>💾 {__('Speichern', 'bs-custom-mail')}</>
+            )}
+          </button>
+          {mode === 'edit' && onDelete && (
+            <button
+              onClick={() => {
+                if (
+                  template &&
+                  window.confirm(
+                    __('Template wirklich löschen?', 'bs-custom-mail'),
+                  )
+                ) {
+                  onDelete(template)
+                }
+              }}
+              disabled={saving}
+              style={{
+                padding: '14px',
+                background: '#fef2f2',
+                color: '#dc2626',
+                border: '1px solid #fecaca',
+                borderRadius: '10px',
+                cursor: 'pointer',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+              }}
+            >
+              🗑️ {__('Löschen', 'bs-custom-mail')}
+            </button>
+          )}
+        </div>
+      </div>
+      <style>{`
+				@keyframes spin {
+					from { transform: rotate(0deg); }
+					to { transform: rotate(360deg); }
+				}
+			`}</style>
+    </div>
+  )
 }

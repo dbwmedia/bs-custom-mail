@@ -1,282 +1,321 @@
 /**
- * PDF Template List View Component
+ * PDF Template List - Modern Black/White Design
  */
-import { useState, useEffect } from '@wordpress/element';
-import { __ } from '@wordpress/i18n';
-import apiFetch from '@wordpress/api-fetch';
-import { PDFTemplate } from '../types';
-import { useNotices } from '../hooks';
-import { PDFTemplateEditor } from './PDFTemplateEditor';
+import { useState, useEffect } from '@wordpress/element'
+import { __ } from '@wordpress/i18n'
+import apiFetch from '@wordpress/api-fetch'
+import { PDFTemplate, ViewType } from '../types'
+import { PDFTemplateEditor } from './PDFTemplateEditor'
 
-interface PDFTemplateListProps {
-	onNavigate: ( view: 'vouchers' | 'pdf-templates' ) => void;
+interface Props {
+  onNavigate: (view: ViewType) => void
 }
 
-export function PDFTemplateList( { onNavigate }: PDFTemplateListProps ) {
-	const [ templates, setTemplates ] = useState< PDFTemplate[] >( [] );
-	const [ loading, setLoading ] = useState( true );
-	const [ editingTemplate, setEditingTemplate ] = useState< PDFTemplate | null >( null );
-	const [ isCreating, setIsCreating ] = useState( false );
-	const { notices, addNotice, removeNotice } = useNotices();
+export function PDFTemplateList({ onNavigate }: Props) {
+  const [templates, setTemplates] = useState<PDFTemplate[]>([])
+  const [loading, setLoading] = useState(true)
+  const [editingTemplate, setEditingTemplate] = useState<
+    PDFTemplate | undefined
+  >(undefined)
+  const [isCreating, setIsCreating] = useState(false)
 
-	useEffect( () => {
-		loadTemplates();
-	}, [] );
+  const fetchTemplates = async () => {
+    try {
+      setLoading(true)
+      const response = await apiFetch({
+        path: 'bs-custom-mail/v1/pdf-templates',
+      })
+      setTemplates((response as { templates: PDFTemplate[] }).templates || [])
+    } catch (error) {
+      console.error('Error fetching PDF templates:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
-	const loadTemplates = async () => {
-		try {
-			setLoading( true );
-			const response = await apiFetch< PDFTemplate[] >( {
-				path: '/bs-custom-mail/v1/pdf-templates',
-			} );
-			setTemplates( response );
-		} catch ( error ) {
-			addNotice( 'error', __( 'Fehler beim Laden der PDF-Vorlagen.', 'bs-custom-mail' ) );
-		} finally {
-			setLoading( false );
-		}
-	};
+  useEffect(() => {
+    fetchTemplates()
+  }, [])
 
-	const handleDelete = async ( id: number ) => {
-		if ( ! window.confirm( __( 'Möchten Sie diese PDF-Vorlage wirklich löschen?', 'bs-custom-mail' ) ) ) {
-			return;
-		}
+  const handleSave = () => {
+    setEditingTemplate(undefined)
+    setIsCreating(false)
+    fetchTemplates()
+  }
 
-		try {
-			await apiFetch( {
-				path: `/bs-custom-mail/v1/pdf-templates/${ id }`,
-				method: 'DELETE',
-			} );
-			addNotice( 'success', __( 'PDF-Vorlage gelöscht.', 'bs-custom-mail' ) );
-			loadTemplates();
-		} catch ( error ) {
-			addNotice( 'error', __( 'Fehler beim Löschen.', 'bs-custom-mail' ) );
-		}
-	};
+  const handleDelete = async (template: PDFTemplate) => {
+    try {
+      await apiFetch({
+        path: `bs-custom-mail/v1/pdf-templates/${template.id}`,
+        method: 'DELETE',
+      })
+      fetchTemplates()
+    } catch (error) {
+      console.error('Error deleting template:', error)
+      alert(__('Fehler beim Löschen', 'bs-custom-mail'))
+    }
+  }
 
-	const handleSave = async ( template: PDFTemplate ) => {
-		try {
-			if ( template.id ) {
-				await apiFetch( {
-					path: `/bs-custom-mail/v1/pdf-templates/${ template.id }`,
-					method: 'POST',
-					data: template,
-				} );
-				addNotice( 'success', __( 'PDF-Vorlage aktualisiert.', 'bs-custom-mail' ) );
-			} else {
-				await apiFetch( {
-					path: '/bs-custom-mail/v1/pdf-templates',
-					method: 'POST',
-					data: template,
-				} );
-				addNotice( 'success', __( 'PDF-Vorlage erstellt.', 'bs-custom-mail' ) );
-			}
-			setEditingTemplate( null );
-			setIsCreating( false );
-			loadTemplates();
-		} catch ( error ) {
-			addNotice( 'error', __( 'Fehler beim Speichern.', 'bs-custom-mail' ) );
-		}
-	};
+  if (isCreating) {
+    return (
+      <PDFTemplateEditor
+        mode='create'
+        onCancel={() => setIsCreating(false)}
+        onSave={handleSave}
+      />
+    )
+  }
 
-	if ( editingTemplate || isCreating ) {
-		return (
-			<PDFTemplateEditor
-				template={ editingTemplate }
-				onSave={ handleSave }
-				onCancel={ () => {
-					setEditingTemplate( null );
-					setIsCreating( false );
-				} }
-			/>
-		);
-	}
+  if (editingTemplate) {
+    return (
+      <PDFTemplateEditor
+        template={editingTemplate}
+        mode='edit'
+        onCancel={() => setEditingTemplate(undefined)}
+        onSave={handleSave}
+        onDelete={handleDelete}
+      />
+    )
+  }
 
-	return (
-		<div className="bs-pdf-template-list">
-			<div className="bs-page-header">
-				<h2>{ __( 'PDF Vorlagen', 'bs-custom-mail' ) }</h2>
-				<div className="bs-page-actions">
-					<button
-						className="button button-secondary"
-						onClick={ () => onNavigate( 'vouchers' ) }
-					>
-						{ __( '← Zurück zu Gutscheinen', 'bs-custom-mail' ) }
-					</button>
-					<button
-						className="button button-primary"
-						onClick={ () => setIsCreating( true ) }
-					>
-						{ __( '+ Neue PDF-Vorlage', 'bs-custom-mail' ) }
-					</button>
-				</div>
-			</div>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}
+      >
+        <button
+          onClick={() => onNavigate('vouchers')}
+          style={{
+            padding: '10px 16px',
+            background: '#f3f4f6',
+            color: '#374151',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontWeight: 500,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontSize: '14px',
+          }}
+        >
+          ← {__('Zurück zu Gutscheinen', 'bs-custom-mail')}
+        </button>
+        <button
+          onClick={() => setIsCreating(true)}
+          style={{
+            padding: '12px 20px',
+            background: '#000',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '10px',
+            cursor: 'pointer',
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontSize: '14px',
+          }}
+        >
+          + {__('Neues Template', 'bs-custom-mail')}
+        </button>
+      </div>
 
-			<div
-				style={ {
-					background: '#f0f9ff',
-					padding: '16px',
-					borderRadius: '8px',
-					marginBottom: '24px',
-					borderLeft: '4px solid #2563eb',
-				} }
-			>
-				<p style={ { margin: 0 } }>
-					{ __(
-						'PDF-Vorlagen werden für die Generierung von Gutscheinen verwendet. Laden Sie ein PDF hoch und positionieren Sie die Textfelder (Wert, Code, Name, Ablaufdatum) per Drag & Drop.',
-						'bs-custom-mail'
-					) }
-				</p>
-			</div>
+      {loading ? (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+            gap: '20px',
+          }}
+        >
+          {[1, 2, 3].map((i) => (
+            <div
+              key={i}
+              style={{
+                background: '#fff',
+                borderRadius: '12px',
+                border: '1px solid #e5e7eb',
+                height: '200px',
+                animation: 'pulse 2s infinite',
+              }}
+            />
+          ))}
+        </div>
+      ) : templates.length === 0 ? (
+        <div
+          style={{
+            background: '#fff',
+            borderRadius: '16px',
+            border: '1px solid #e5e7eb',
+            padding: '64px 32px',
+            textAlign: 'center',
+          }}
+        >
+          <div style={{ marginBottom: '24px' }}>
+            <div
+              style={{
+                width: '80px',
+                height: '80px',
+                background: '#f3f4f6',
+                borderRadius: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto',
+                fontSize: '36px',
+              }}
+            >
+              📄
+            </div>
+          </div>
+          <h3
+            style={{
+              fontSize: '20px',
+              fontWeight: 700,
+              color: '#000',
+              marginBottom: '8px',
+            }}
+          >
+            {__('Keine Templates vorhanden', 'bs-custom-mail')}
+          </h3>
+          <p
+            style={{ fontSize: '15px', color: '#6b7280', marginBottom: '32px' }}
+          >
+            {__(
+              'Erstellen Sie Ihr erstes PDF Template für Gutscheine.',
+              'bs-custom-mail',
+            )}
+          </p>
+          <button
+            onClick={() => setIsCreating(true)}
+            style={{
+              padding: '14px 28px',
+              background: '#000',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '10px',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '15px',
+            }}
+          >
+            {__('Erstes Template erstellen', 'bs-custom-mail')}
+          </button>
+        </div>
+      ) : (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+            gap: '20px',
+          }}
+        >
+          {templates.map((template) => {
+            const isImage = template.attachment_url?.match(
+              /\.(jpg|jpeg|png|webp)$/i,
+            )
+            return (
+              <div
+                key={template.id}
+                onClick={() => setEditingTemplate(template)}
+                style={{
+                  background: '#fff',
+                  borderRadius: '16px',
+                  border: '1px solid #e5e7eb',
+                  overflow: 'hidden',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#000'
+                  e.currentTarget.style.transform = 'translateY(-2px)'
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = '#e5e7eb'
+                  e.currentTarget.style.transform = 'none'
+                  e.currentTarget.style.boxShadow = 'none'
+                }}
+              >
+                <div
+                  style={{
+                    aspectRatio: '4/3',
+                    background: '#f9fafb',
+                    position: 'relative',
+                  }}
+                >
+                  {template.attachment_url ? (
+                    isImage ? (
+                      <img
+                        src={template.attachment_url}
+                        alt={template.name}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          height: '100%',
+                          background: '#f3f4f6',
+                          fontSize: '48px',
+                        }}
+                      >
+                        ⊞
+                      </div>
+                    )
+                  ) : (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        height: '100%',
+                        background: '#f3f4f6',
+                        fontSize: '48px',
+                      }}
+                    >
+                      🖼️
+                    </div>
+                  )}
+                </div>
+                <div style={{ padding: '20px' }}>
+                  <h3
+                    style={{
+                      fontSize: '16px',
+                      fontWeight: 700,
+                      color: '#000',
+                      marginBottom: '4px',
+                    }}
+                  >
+                    {template.name}
+                  </h3>
+                  <p style={{ fontSize: '13px', color: '#6b7280', margin: 0 }}>
+                    {isImage ? 'Bild' : 'PDF'}
+                  </p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
-			{ notices.map( ( notice ) => (
-				<div
-					key={ notice.id }
-					className={ `notice notice-${ notice.status } is-dismissible` }
-				>
-					<p>{ notice.message }</p>
-					<button
-						className="notice-dismiss"
-						onClick={ () => removeNotice( notice.id ) }
-					>
-						<span className="screen-reader-text">
-							{ __( 'Dismiss this notice.', 'bs-custom-mail' ) }
-						</span>
-					</button>
-				</div>
-			) ) }
-
-			{ loading ? (
-				<div className="bs-loading">{ __( 'Lade PDF-Vorlagen...', 'bs-custom-mail' ) }</div>
-			) : templates.length === 0 ? (
-				<div
-					style={ {
-						textAlign: 'center',
-						padding: '60px 20px',
-						background: '#f9fafb',
-						borderRadius: '12px',
-					} }
-				>
-					<div style={ { fontSize: '48px', marginBottom: '16px' } }>📄</div>
-					<h3 style={ { margin: '0 0 8px 0' } }>
-						{ __( 'Keine PDF-Vorlagen vorhanden', 'bs-custom-mail' ) }
-					</h3>
-					<p style={ { color: '#666', marginBottom: '24px' } }>
-						{ __( 'Erstellen Sie Ihre erste PDF-Vorlage für Gutscheine.', 'bs-custom-mail' ) }
-					</p>
-					<button
-						className="button button-primary button-hero"
-						onClick={ () => setIsCreating( true ) }
-					>
-						{ __( 'PDF-Vorlage erstellen', 'bs-custom-mail' ) }
-					</button>
-				</div>
-			) : (
-				<div
-					style={ {
-						display: 'grid',
-						gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-						gap: '20px',
-					} }
-				>
-					{ templates.map( ( template ) => (
-						<div
-							key={ template.id }
-							style={ {
-								background: '#fff',
-								borderRadius: '12px',
-								boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-								padding: '20px',
-								border: '1px solid #e5e7eb',
-							} }
-						>
-							<div
-								style={ {
-									display: 'flex',
-									justifyContent: 'space-between',
-									alignItems: 'flex-start',
-									marginBottom: '12px',
-								} }
-							>
-								<div
-									style={ {
-										width: '48px',
-										height: '48px',
-										background: '#fee2e2',
-										borderRadius: '8px',
-										display: 'flex',
-										alignItems: 'center',
-										justifyContent: 'center',
-										fontSize: '24px',
-									} }
-								>
-									📄
-								</div>
-								<span
-									className="status-badge"
-									style={ {
-										background: template.is_active ? '#dcfce7' : '#f3f4f6',
-										color: template.is_active ? '#166534' : '#6b7280',
-									} }
-								>
-									{ template.is_active
-										? __( 'Aktiv', 'bs-custom-mail' )
-										: __( 'Inaktiv', 'bs-custom-mail' ) }
-								</span>
-							</div>
-
-							<h3 style={ { margin: '0 0 8px 0', fontSize: '18px' } }>
-								{ template.template_name }
-							</h3>
-							<p
-								style={ {
-									margin: '0 0 16px 0',
-									color: '#6b7280',
-									fontSize: '14px',
-								} }
-							>
-								{ template.template_key }
-							</p>
-
-							{ template.attachment_url && (
-								<div
-									style={ {
-										marginBottom: '16px',
-										padding: '8px',
-										background: '#f9fafb',
-										borderRadius: '6px',
-										fontSize: '12px',
-									} }
-								>
-									<a
-										href={ template.attachment_url }
-										target="_blank"
-										rel="noopener noreferrer"
-									>
-										{ __( 'PDF anzeigen', 'bs-custom-mail' ) }
-									</a>
-								</div>
-							) }
-
-							<div style={ { display: 'flex', gap: '8px' } }>
-								<button
-									className="button button-small"
-									onClick={ () => setEditingTemplate( template ) }
-								>
-									{ __( 'Bearbeiten', 'bs-custom-mail' ) }
-								</button>
-								<button
-									className="button button-small"
-									style={ { color: '#dc2626' } }
-									onClick={ () => handleDelete( template.id! ) }
-								>
-									{ __( 'Löschen', 'bs-custom-mail' ) }
-								</button>
-							</div>
-						</div>
-					) ) }
-				</div>
-			) }
-		</div>
-	);
+      <style>{`
+				@keyframes pulse {
+					0%, 100% { opacity: 1; }
+					50% { opacity: 0.5; }
+				}
+			`}</style>
+    </div>
+  )
 }
