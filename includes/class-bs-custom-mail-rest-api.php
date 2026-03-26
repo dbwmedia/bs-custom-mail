@@ -153,6 +153,32 @@ class Bs_Custom_Mail_REST_API {
 				),
 			)
 		);
+
+		// Placeholders endpoint
+		register_rest_route(
+			$this->namespace,
+			'/placeholders',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_placeholders' ),
+					'permission_callback' => array( $this, 'check_admin_permissions' ),
+				),
+			)
+		);
+
+		// Default templates endpoint
+		register_rest_route(
+			$this->namespace,
+			'/default-templates',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_default_templates' ),
+					'permission_callback' => array( $this, 'check_admin_permissions' ),
+				),
+			)
+		);
 	}
 
 	/**
@@ -656,6 +682,73 @@ class Bs_Custom_Mail_REST_API {
 				array( 'status' => 500 )
 			);
 		}
+	}
+
+	/**
+	 * Get available placeholders
+	 *
+	 * @since    2.0.0
+	 * @return   WP_REST_Response
+	 */
+	public function get_placeholders() {
+		$placeholders = array(
+			array( 'code' => '{{Kundenname}}', 'label' => __( 'Kundenname', 'bs-custom-mail' ), 'description' => __( 'Vorname des Kunden', 'bs-custom-mail' ) ),
+			array( 'code' => '{{Produktname}}', 'label' => __( 'Produktname', 'bs-custom-mail' ), 'description' => __( 'Name des gebuchten Produkts', 'bs-custom-mail' ) ),
+			array( 'code' => '{{Kursdatum}}', 'label' => __( 'Kursdatum', 'bs-custom-mail' ), 'description' => __( 'Datum des Kurses', 'bs-custom-mail' ) ),
+			array( 'code' => '{{Rechnungsnummer}}', 'label' => __( 'Rechnungsnummer', 'bs-custom-mail' ), 'description' => __( 'Rechnungsnummer der Bestellung', 'bs-custom-mail' ) ),
+			array( 'code' => '{{Gutscheincode}}', 'label' => __( 'Gutscheincode', 'bs-custom-mail' ), 'description' => __( 'Gutscheincode (bei Gutscheinen)', 'bs-custom-mail' ) ),
+			array( 'code' => '{{Gutscheinwert}}', 'label' => __( 'Gutscheinwert', 'bs-custom-mail' ), 'description' => __( 'Wert des Gutscheins', 'bs-custom-mail' ) ),
+			array( 'code' => '{{order_number}}', 'label' => __( 'Bestellnummer', 'bs-custom-mail' ), 'description' => __( 'WooCommerce Bestellnummer', 'bs-custom-mail' ) ),
+			array( 'code' => '{{order_date}}', 'label' => __( 'Bestelldatum', 'bs-custom-mail' ), 'description' => __( 'Datum der Bestellung', 'bs-custom-mail' ) ),
+			array( 'code' => '{{customer_name}}', 'label' => __( 'Kundenname (EN)', 'bs-custom-mail' ), 'description' => __( 'Vorname des Kunden (EN Variante)', 'bs-custom-mail' ) ),
+			array( 'code' => '{{customer_full_name}}', 'label' => __( 'Vollständiger Name', 'bs-custom-mail' ), 'description' => __( 'Vor- und Nachname des Kunden', 'bs-custom-mail' ) ),
+			array( 'code' => '{{site_name}}', 'label' => __( 'Website-Name', 'bs-custom-mail' ), 'description' => __( 'Name der Website', 'bs-custom-mail' ) ),
+			array( 'code' => '{{site_url}}', 'label' => __( 'Website-URL', 'bs-custom-mail' ), 'description' => __( 'URL der Website', 'bs-custom-mail' ) ),
+		);
+
+		return rest_ensure_response( $placeholders );
+	}
+
+	/**
+	 * Get default email templates from Mail-Templates folder
+	 *
+	 * @since    2.0.0
+	 * @return   WP_REST_Response
+	 */
+	public function get_default_templates() {
+		$plugin_dir = plugin_dir_path( dirname( __FILE__ ) );
+		$templates_dir = $plugin_dir . 'Mail-Templates/';
+		
+		$templates = array();
+		
+		if ( is_dir( $templates_dir ) ) {
+			$files = glob( $templates_dir . '*.txt' );
+			
+			foreach ( $files as $file ) {
+				$filename = basename( $file, '.txt' );
+				$content = file_get_contents( $file );
+				
+				// Parse subject from first lines
+				$lines = explode( "\n", $content );
+				$subject = '';
+				
+				foreach ( $lines as $line ) {
+					if ( strpos( $line, 'Betreff:' ) === 0 ) {
+						$subject = trim( substr( $line, 8 ) );
+						break;
+					}
+				}
+				
+				$templates[] = array(
+					'filename' => $filename,
+					'name' => str_replace( array( 'Email Text ', 'Email ' ), '', $filename ),
+					'subject' => $subject,
+					'content' => $content,
+				);
+			}
+		}
+		
+		return rest_ensure_response( $templates );
 	}
 
 	/**
