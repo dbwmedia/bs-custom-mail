@@ -11,15 +11,14 @@ import {
 	TextControl,
 	ToggleControl,
 	Spinner,
-	TextareaControl,
 	SelectControl,
 } from '@wordpress/components';
 import { arrowLeft } from '@wordpress/icons';
 import { Template, ViewType } from '../types';
-import { useTemplates, useNotices, useDefaultTemplates } from '../hooks';
+import { useTemplates, useNotices, useDefaultTemplates, usePlaceholders } from '../hooks';
 import { Notices } from '../components/Notices';
-// import { AttachmentUploader } from '../components/AttachmentUploader';
 import { PlaceholderHelp } from '../components/PlaceholderHelp';
+import { RichTextEditor, EmojiPicker } from '../components/RichTextEditor';
 
 interface TemplateEditorProps {
 	mode: 'create' | 'edit';
@@ -42,6 +41,7 @@ export function TemplateEditor( { mode, templateKey, onNavigate }: TemplateEdito
 	const { templates, isLoading: isTemplatesLoading, createTemplate, updateTemplate, sendTestEmail } =
 		useTemplates();
 	const { templates: defaultTemplates, isLoading: isDefaultTemplatesLoading } = useDefaultTemplates();
+	usePlaceholders(); // Loads placeholders in the background
 	const { notices, success, error, removeNotice } = useNotices();
 	const [ template, setTemplate ] = useState<Template>( EMPTY_TEMPLATE );
 	const [ isSaving, setIsSaving ] = useState( false );
@@ -66,10 +66,17 @@ export function TemplateEditor( { mode, templateKey, onNavigate }: TemplateEdito
 				( t ) => t.filename === selectedDefaultTemplate 
 			);
 			if ( defaultTemplate ) {
+					// Convert plain text to HTML with proper formatting
+				const content = defaultTemplate.content
+					.replace( /\n\n/g, '</p><p>' )
+					.replace( /\n/g, '<br>' )
+					.replace( /^(.+)$/gm, '<p>$1</p>' )
+					.replace( /<p><\/p>/g, '' );
+				
 				setTemplate( ( prev ) => ( {
 					...prev,
-					subject: defaultTemplate.subject || prev.subject,
-					content: defaultTemplate.content || prev.content,
+					subject: defaultTemplate.subject || '',
+					content: content,
 				} ) );
 			}
 		}
@@ -129,6 +136,21 @@ export function TemplateEditor( { mode, templateKey, onNavigate }: TemplateEdito
 		} finally {
 			setIsSendingTest( false );
 		}
+	};
+
+	const insertPlaceholder = ( code: string ) => {
+		setTemplate( ( prev ) => ( {
+			...prev,
+			content: prev.content + code,
+		} ) );
+		success( `${ code } ${ __( 'eingefügt!', 'bs-custom-mail' ) }` );
+	};
+
+	const insertEmoji = ( emoji: string ) => {
+		setTemplate( ( prev ) => ( {
+			...prev,
+			content: prev.content + emoji,
+		} ) );
 	};
 
 	// Show loading state while templates are loading in edit mode
@@ -243,36 +265,23 @@ export function TemplateEditor( { mode, templateKey, onNavigate }: TemplateEdito
 
 					<Card>
 						<CardHeader>
-							<h3>{ __( 'Inhalt', 'bs-custom-mail' ) }</h3>
+							<div style={ { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' } }>
+								<h3>{ __( 'Inhalt', 'bs-custom-mail' ) }</h3>
+								<EmojiPicker onSelect={ insertEmoji } />
+							</div>
 						</CardHeader>
 						<CardBody>
-							<TextareaControl
-								label={ __( 'E-Mail Text', 'bs-custom-mail' ) }
+							<RichTextEditor
 								value={ template.content }
-								onChange={ ( content: string ) =>
-									setTemplate( { ...template, content } )
-								}
-								rows={ 20 }
-								help={ __( 'Verwende Platzhalter wie {{Kundenname}}, {{Produktname}}, etc.', 'bs-custom-mail' ) }
+								onChange={ ( content ) => setTemplate( { ...template, content } ) }
+								placeholder={ __( 'E-Mail Inhalt hier eingeben...', 'bs-custom-mail' ) }
 							/>
 						</CardBody>
 					</Card>
 				</div>
 
 				<div className="bs-editor-sidebar">
-					<PlaceholderHelp
-						onCopy={ ( code ) => {
-							// Insert placeholder at cursor position in content
-							const textarea = document.querySelector( 'textarea' ) as HTMLTextAreaElement;
-							if ( textarea ) {
-								const start = textarea.selectionStart;
-								const end = textarea.selectionEnd;
-								const newContent = template.content.substring( 0, start ) + code + template.content.substring( end );
-								setTemplate( { ...template, content: newContent } );
-							}
-							success( `${ code } ${ __( 'eingefügt!', 'bs-custom-mail' ) }` );
-						} }
-					/>
+					<PlaceholderHelp onCopy={ insertPlaceholder } />
 
 					<Card style={ { marginTop: '20px' } }>
 						<CardHeader>
@@ -290,7 +299,7 @@ export function TemplateEditor( { mode, templateKey, onNavigate }: TemplateEdito
 								onClick={ handleSendTest }
 								isBusy={ isSendingTest }
 								disabled={ isSendingTest }
-								style={ { marginTop: '10px' } }
+								style={ { marginTop: '10px', width: '100%' } }
 							>
 								{ __( 'Test-E-Mail senden', 'bs-custom-mail' ) }
 							</Button>
