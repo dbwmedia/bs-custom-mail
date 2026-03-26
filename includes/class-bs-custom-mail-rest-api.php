@@ -179,6 +179,158 @@ class Bs_Custom_Mail_REST_API {
 				),
 			)
 		);
+
+		// Voucher endpoints
+		$this->register_voucher_routes();
+	}
+
+	/**
+	 * Register voucher-related REST API routes
+	 *
+	 * @since    2.0.0
+	 */
+	private function register_voucher_routes() {
+		// Vouchers list
+		register_rest_route(
+			$this->namespace,
+			'/vouchers',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_vouchers' ),
+					'permission_callback' => array( $this, 'check_admin_permissions' ),
+					'args'                => array(
+						'page' => array(
+							'default' => 1,
+							'type'    => 'integer',
+						),
+						'per_page' => array(
+							'default' => 20,
+							'type'    => 'integer',
+						),
+						'status' => array(
+							'default' => '',
+							'type'    => 'string',
+						),
+						'search' => array(
+							'default' => '',
+							'type'    => 'string',
+						),
+					),
+				),
+			)
+		);
+
+		// Single voucher
+		register_rest_route(
+			$this->namespace,
+			'/vouchers/(?P<id>\d+)',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_voucher' ),
+					'permission_callback' => array( $this, 'check_admin_permissions' ),
+				),
+				array(
+					'methods'             => WP_REST_Server::EDITABLE,
+					'callback'            => array( $this, 'update_voucher' ),
+					'permission_callback' => array( $this, 'check_admin_permissions' ),
+					'args'                => array(
+						'status' => array(
+							'type' => 'string',
+							'enum' => array( 'active', 'used', 'cancelled' ),
+						),
+					),
+				),
+			)
+		);
+
+		// Voucher stats
+		register_rest_route(
+			$this->namespace,
+			'/vouchers/stats',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_voucher_stats' ),
+					'permission_callback' => array( $this, 'check_admin_permissions' ),
+				),
+			)
+		);
+
+		// PDF Templates
+		register_rest_route(
+			$this->namespace,
+			'/pdf-templates',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_pdf_templates' ),
+					'permission_callback' => array( $this, 'check_admin_permissions' ),
+				),
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'create_pdf_template' ),
+					'permission_callback' => array( $this, 'check_admin_permissions' ),
+					'args'                => $this->get_pdf_template_creation_args(),
+				),
+			)
+		);
+
+		register_rest_route(
+			$this->namespace,
+			'/pdf-templates/(?P<id>\d+)',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_pdf_template' ),
+					'permission_callback' => array( $this, 'check_admin_permissions' ),
+				),
+				array(
+					'methods'             => WP_REST_Server::EDITABLE,
+					'callback'            => array( $this, 'update_pdf_template' ),
+					'permission_callback' => array( $this, 'check_admin_permissions' ),
+				),
+				array(
+					'methods'             => WP_REST_Server::DELETABLE,
+					'callback'            => array( $this, 'delete_pdf_template' ),
+					'permission_callback' => array( $this, 'check_admin_permissions' ),
+				),
+			)
+		);
+	}
+
+	/**
+	 * Get PDF template creation arguments
+	 *
+	 * @since    2.0.0
+	 * @return   array
+	 */
+	private function get_pdf_template_creation_args() {
+		return array(
+			'template_name' => array(
+				'required'          => true,
+				'type'              => 'string',
+				'sanitize_callback' => 'sanitize_text_field',
+			),
+			'template_key' => array(
+				'required'          => true,
+				'type'              => 'string',
+				'sanitize_callback' => 'sanitize_text_field',
+			),
+			'attachment_id' => array(
+				'required' => true,
+				'type'     => 'integer',
+			),
+			'template_config' => array(
+				'type'    => 'string',
+				'default' => '',
+			),
+			'font_size' => array(
+				'type'    => 'integer',
+				'default' => 16,
+			),
+		);
 	}
 
 	/**
@@ -798,5 +950,343 @@ class Bs_Custom_Mail_REST_API {
 		}
 
 		return $result;
+	}
+
+	/**
+	 * Get all vouchers
+	 *
+	 * @since    2.0.0
+	 * @param    WP_REST_Request $request The request.
+	 * @return   WP_REST_Response
+	 */
+	public function get_vouchers( $request ) {
+		global $wpdb;
+
+		$table_name = $wpdb->prefix . 'bs_custom_mail_vouchers';
+		$page       = $request->get_param( 'page' );
+		$per_page   = $request->get_param( 'per_page' );
+		$status     = $request->get_param( 'status' );
+		$search     = $request->get_param( 'search' );
+
+		$where = 'WHERE 1=1';
+		if ( $status ) {
+			$where .= $wpdb->prepare( ' AND status = %s', $status );
+		}
+		if ( $search ) {
+			$where .= $wpdb->prepare( ' AND (voucher_code LIKE %s OR recipient_email LIKE %s OR recipient_name LIKE %s)',
+				'%' . $wpdb->esc_like( $search ) . '%',
+				'%' . $wpdb->esc_like( $search ) . '%',
+				'%' . $wpdb->esc_like( $search ) . '%'
+			);
+		}
+
+		$total = $wpdb->get_var( "SELECT COUNT(*) FROM {$table_name} {$where}" );
+
+		$offset = ( $page - 1 ) * $per_page;
+		$vouchers = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT * FROM {$table_name} {$where} ORDER BY created_at DESC LIMIT %d OFFSET %d",
+				$per_page,
+				$offset
+			),
+			ARRAY_A
+		);
+
+		return rest_ensure_response( array(
+			'vouchers'    => $vouchers,
+			'total'       => (int) $total,
+			'total_pages' => ceil( $total / $per_page ),
+			'page'        => $page,
+			'per_page'    => $per_page,
+		) );
+	}
+
+	/**
+	 * Get single voucher
+	 *
+	 * @since    2.0.0
+	 * @param    WP_REST_Request $request The request.
+	 * @return   WP_REST_Response|WP_Error
+	 */
+	public function get_voucher( $request ) {
+		global $wpdb;
+
+		$id         = $request->get_param( 'id' );
+		$table_name = $wpdb->prefix . 'bs_custom_mail_vouchers';
+
+		$voucher = $wpdb->get_row(
+			$wpdb->prepare( "SELECT * FROM {$table_name} WHERE id = %d", $id ),
+			ARRAY_A
+		);
+
+		if ( ! $voucher ) {
+			return new WP_Error(
+				'rest_voucher_not_found',
+				__( 'Voucher not found.', 'bs-custom-mail' ),
+				array( 'status' => 404 )
+			);
+		}
+
+		return rest_ensure_response( $voucher );
+	}
+
+	/**
+	 * Update voucher
+	 *
+	 * @since    2.0.0
+	 * @param    WP_REST_Request $request The request.
+	 * @return   WP_REST_Response|WP_Error
+	 */
+	public function update_voucher( $request ) {
+		global $wpdb;
+
+		$id         = $request->get_param( 'id' );
+		$table_name = $wpdb->prefix . 'bs_custom_mail_vouchers';
+
+		$existing = $wpdb->get_row(
+			$wpdb->prepare( "SELECT id FROM {$table_name} WHERE id = %d", $id )
+		);
+
+		if ( ! $existing ) {
+			return new WP_Error(
+				'rest_voucher_not_found',
+				__( 'Voucher not found.', 'bs-custom-mail' ),
+				array( 'status' => 404 )
+			);
+		}
+
+		$update_data = array();
+		if ( $request->has_param( 'status' ) ) {
+			$update_data['status'] = $request->get_param( 'status' );
+		}
+
+		if ( empty( $update_data ) ) {
+			return rest_ensure_response( $this->get_voucher( $request ) );
+		}
+
+		$wpdb->update(
+			$table_name,
+			$update_data,
+			array( 'id' => $id )
+		);
+
+		return $this->get_voucher( $request );
+	}
+
+	/**
+	 * Get voucher statistics
+	 *
+	 * @since    2.0.0
+	 * @return   WP_REST_Response
+	 */
+	public function get_voucher_stats() {
+		global $wpdb;
+
+		$table_name = $wpdb->prefix . 'bs_custom_mail_vouchers';
+
+		$total     = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table_name}" );
+		$active    = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table_name} WHERE status = 'active'" );
+		$used      = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table_name} WHERE status = 'used'" );
+		$cancelled = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table_name} WHERE status = 'cancelled'" );
+		$total_value = (float) $wpdb->get_var( "SELECT SUM(voucher_value) FROM {$table_name}" ) ?: 0;
+
+		return rest_ensure_response( array(
+			'total'       => $total,
+			'active'      => $active,
+			'used'        => $used,
+			'cancelled'   => $cancelled,
+			'total_value' => $total_value,
+		) );
+	}
+
+	/**
+	 * Get all PDF templates
+	 *
+	 * @since    2.0.0
+	 * @return   WP_REST_Response
+	 */
+	public function get_pdf_templates() {
+		global $wpdb;
+
+		$table_name = $wpdb->prefix . 'bs_custom_mail_pdf_templates';
+		$templates  = $wpdb->get_results( "SELECT * FROM {$table_name} ORDER BY template_name ASC", ARRAY_A );
+
+		// Add attachment info
+		foreach ( $templates as &$template ) {
+			$template['attachment_url'] = $template['attachment_id'] ? wp_get_attachment_url( $template['attachment_id'] ) : '';
+			$template['template_config'] = json_decode( $template['template_config'], true );
+		}
+
+		return rest_ensure_response( $templates );
+	}
+
+	/**
+	 * Get single PDF template
+	 *
+	 * @since    2.0.0
+	 * @param    WP_REST_Request $request The request.
+	 * @return   WP_REST_Response|WP_Error
+	 */
+	public function get_pdf_template( $request ) {
+		global $wpdb;
+
+		$id         = $request->get_param( 'id' );
+		$table_name = $wpdb->prefix . 'bs_custom_mail_pdf_templates';
+
+		$template = $wpdb->get_row(
+			$wpdb->prepare( "SELECT * FROM {$table_name} WHERE id = %d", $id ),
+			ARRAY_A
+		);
+
+		if ( ! $template ) {
+			return new WP_Error(
+				'rest_template_not_found',
+				__( 'PDF Template not found.', 'bs-custom-mail' ),
+				array( 'status' => 404 )
+			);
+		}
+
+		$template['attachment_url'] = $template['attachment_id'] ? wp_get_attachment_url( $template['attachment_id'] ) : '';
+		$template['template_config'] = json_decode( $template['template_config'], true );
+
+		return rest_ensure_response( $template );
+	}
+
+	/**
+	 * Create PDF template
+	 *
+	 * @since    2.0.0
+	 * @param    WP_REST_Request $request The request.
+	 * @return   WP_REST_Response|WP_Error
+	 */
+	public function create_pdf_template( $request ) {
+		global $wpdb;
+
+		$table_name = $wpdb->prefix . 'bs_custom_mail_pdf_templates';
+
+		// Check if template key already exists
+		$existing = $wpdb->get_var(
+			$wpdb->prepare( "SELECT id FROM {$table_name} WHERE template_key = %s", $request->get_param( 'template_key' ) )
+		);
+
+		if ( $existing ) {
+			return new WP_Error(
+				'rest_template_exists',
+				__( 'A PDF template with this key already exists.', 'bs-custom-mail' ),
+				array( 'status' => 409 )
+			);
+		}
+
+		$result = $wpdb->insert(
+			$table_name,
+			array(
+				'template_name'   => $request->get_param( 'template_name' ),
+				'template_key'    => $request->get_param( 'template_key' ),
+				'attachment_id'   => $request->get_param( 'attachment_id' ),
+				'template_config' => $request->get_param( 'template_config' ),
+				'font_size'       => $request->get_param( 'font_size' ),
+				'is_active'       => 1,
+			),
+			array( '%s', '%s', '%d', '%s', '%d', '%d' )
+		);
+
+		if ( false === $result ) {
+			return new WP_Error(
+				'rest_insert_failed',
+				__( 'Failed to create PDF template.', 'bs-custom-mail' ),
+				array( 'status' => 500 )
+			);
+		}
+
+		return $this->get_pdf_template( $request );
+	}
+
+	/**
+	 * Update PDF template
+	 *
+	 * @since    2.0.0
+	 * @param    WP_REST_Request $request The request.
+	 * @return   WP_REST_Response|WP_Error
+	 */
+	public function update_pdf_template( $request ) {
+		global $wpdb;
+
+		$id         = $request->get_param( 'id' );
+		$table_name = $wpdb->prefix . 'bs_custom_mail_pdf_templates';
+
+		$existing = $wpdb->get_row(
+			$wpdb->prepare( "SELECT id FROM {$table_name} WHERE id = %d", $id )
+		);
+
+		if ( ! $existing ) {
+			return new WP_Error(
+				'rest_template_not_found',
+				__( 'PDF Template not found.', 'bs-custom-mail' ),
+				array( 'status' => 404 )
+			);
+		}
+
+		$update_data = array();
+		if ( $request->has_param( 'template_name' ) ) {
+			$update_data['template_name'] = sanitize_text_field( $request->get_param( 'template_name' ) );
+		}
+		if ( $request->has_param( 'template_config' ) ) {
+			$update_data['template_config'] = $request->get_param( 'template_config' );
+		}
+		if ( $request->has_param( 'font_size' ) ) {
+			$update_data['font_size'] = intval( $request->get_param( 'font_size' ) );
+		}
+		if ( $request->has_param( 'is_active' ) ) {
+			$update_data['is_active'] = $request->get_param( 'is_active' ) ? 1 : 0;
+		}
+
+		if ( empty( $update_data ) ) {
+			return $this->get_pdf_template( $request );
+		}
+
+		$wpdb->update(
+			$table_name,
+			$update_data,
+			array( 'id' => $id )
+		);
+
+		return $this->get_pdf_template( $request );
+	}
+
+	/**
+	 * Delete PDF template
+	 *
+	 * @since    2.0.0
+	 * @param    WP_REST_Request $request The request.
+	 * @return   WP_REST_Response|WP_Error
+	 */
+	public function delete_pdf_template( $request ) {
+		global $wpdb;
+
+		$id         = $request->get_param( 'id' );
+		$table_name = $wpdb->prefix . 'bs_custom_mail_pdf_templates';
+
+		$existing = $wpdb->get_row(
+			$wpdb->prepare( "SELECT * FROM {$table_name} WHERE id = %d", $id ),
+			ARRAY_A
+		);
+
+		if ( ! $existing ) {
+			return new WP_Error(
+				'rest_template_not_found',
+				__( 'PDF Template not found.', 'bs-custom-mail' ),
+				array( 'status' => 404 )
+			);
+		}
+
+		$wpdb->delete(
+			$table_name,
+			array( 'id' => $id )
+		);
+
+		return rest_ensure_response( array(
+			'deleted'  => true,
+			'template' => $existing,
+		) );
 	}
 }

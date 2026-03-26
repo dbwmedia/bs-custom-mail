@@ -61,4 +61,53 @@ export interface Notice {
 	message: string;
 }
 
-export type ViewType = 'list' | 'create' | 'edit' | 'settings' | 'stats';
+export type ViewType = 'list' | 'create' | 'edit' | 'settings' | 'stats' | 'vouchers' | 'pdf-templates';
+
+/**
+ * Voucher types
+ */
+export interface Voucher {
+	id: number;
+	order_id: number;
+	order_item_id: number;
+	product_id: number;
+	voucher_code: string;
+	voucher_value: number;
+	recipient_email: string;
+	recipient_name: string;
+	personal_message: string;
+	pdf_path: string;
+	expiry_date: string;
+	status: 'active' | 'used' | 'cancelled';
+	usage_count: number;
+	created_at: string;
+	used_at?: string;
+}
+
+export interface VoucherStats {
+	total: number;
+	active: number;
+	used: number;
+	cancelled: number;
+	total_value: number;
+}
+
+export interface PDFTemplate {
+	id?: number;
+	template_name: string;
+	template_key: string;
+	attachment_id: number;
+	attachment_url?: string;
+	template_config: PDFTemplateConfig | string;
+	font_size: number;
+	is_active: boolean;
+	created_at?: string;
+	updated_at?: string;
+}
+
+export interface PDFTemplateConfig {
+	wert?: { x: number; y: number };
+	code?: { x: number; y: number };
+	name?: { x: number; y: number };
+	expiry?: { x: number; y: number };
+}

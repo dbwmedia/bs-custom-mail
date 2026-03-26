@@ -75,6 +75,9 @@ class Bs_Custom_Mail_Activator {
 		// Add attachments column if not exists (upgrade from older versions)
 		self::maybe_add_attachments_column();
 
+		// Create voucher tables
+		self::create_voucher_tables();
+
 		// Insert default templates
 		self::insert_default_templates();
 
@@ -101,6 +104,62 @@ class Bs_Custom_Mail_Activator {
 		if ( empty( $column_exists ) ) {
 			$wpdb->query( "ALTER TABLE $table_name ADD COLUMN attachments text AFTER footer_text" );
 		}
+	}
+
+	/**
+	 * Create database tables for voucher system.
+	 *
+	 * @since    2.0.0
+	 */
+	private static function create_voucher_tables() {
+		global $wpdb;
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// Table for PDF templates
+		$table_pdf_templates = $wpdb->prefix . 'bs_custom_mail_pdf_templates';
+		$sql_pdf_templates = "CREATE TABLE IF NOT EXISTS $table_pdf_templates (
+			id bigint(20) NOT NULL AUTO_INCREMENT,
+			template_name varchar(100) NOT NULL,
+			template_key varchar(50) NOT NULL,
+			attachment_id bigint(20) NOT NULL,
+			template_config longtext,
+			font_size int(11) DEFAULT 16,
+			is_active tinyint(1) DEFAULT 1,
+			created_at datetime DEFAULT CURRENT_TIMESTAMP,
+			updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			PRIMARY KEY (id),
+			UNIQUE KEY template_key (template_key)
+		) $charset_collate;";
+
+		// Table for vouchers
+		$table_vouchers = $wpdb->prefix . 'bs_custom_mail_vouchers';
+		$sql_vouchers = "CREATE TABLE IF NOT EXISTS $table_vouchers (
+			id bigint(20) NOT NULL AUTO_INCREMENT,
+			order_id bigint(20) NOT NULL,
+			order_item_id bigint(20) NOT NULL,
+			product_id bigint(20) NOT NULL,
+			voucher_code varchar(50) NOT NULL,
+			voucher_value decimal(10,2) NOT NULL,
+			recipient_email varchar(255),
+			recipient_name varchar(255),
+			personal_message text,
+			pdf_path varchar(500),
+			expiry_date date,
+			status varchar(20) DEFAULT 'active',
+			usage_count int(11) DEFAULT 0,
+			created_at datetime DEFAULT CURRENT_TIMESTAMP,
+			used_at datetime,
+			PRIMARY KEY (id),
+			UNIQUE KEY voucher_code (voucher_code),
+			KEY order_id (order_id),
+			KEY product_id (product_id),
+			KEY status (status),
+			KEY expiry_date (expiry_date)
+		) $charset_collate;";
+
+		require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
+		dbDelta( $sql_pdf_templates );
+		dbDelta( $sql_vouchers );
 	}
 
 	/**

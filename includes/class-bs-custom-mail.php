@@ -80,6 +80,7 @@ class Bs_Custom_Mail {
 		$this->define_public_hooks();
 		$this->define_woocommerce_hooks();
 		$this->define_product_hooks();
+		$this->define_voucher_hooks();
 		$this->define_rest_api_hooks();
 
 	}
@@ -142,6 +143,16 @@ class Bs_Custom_Mail {
 		 * The class responsible for handling REST API endpoints.
 		 */
 		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-bs-custom-mail-rest-api.php';
+
+		/**
+		 * The class responsible for handling voucher functionality.
+		 */
+		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-bs-custom-mail-voucher.php';
+
+		/**
+		 * The class responsible for generating PDF vouchers.
+		 */
+		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-bs-custom-mail-pdf-generator.php';
 
 		$this->loader = new Bs_Custom_Mail_Loader();
 
@@ -211,6 +222,19 @@ class Bs_Custom_Mail {
 
 		// Hook into WooCommerce order status changes
 		$this->loader->add_action( 'woocommerce_order_status_changed', $email_sender, 'handle_order_status_change', 10, 3 );
+
+	}
+
+	/**
+	 * Register all of the hooks related to voucher functionality.
+	 *
+	 * @since    2.0.0
+	 * @access   private
+	 */
+	private function define_voucher_hooks() {
+
+		$voucher = new Bs_Custom_Mail_Voucher( $this->get_version() );
+		$voucher->register_hooks();
 
 	}
 

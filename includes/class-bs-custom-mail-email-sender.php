@@ -483,7 +483,7 @@ class Bs_Custom_Mail_Email_Sender {
 	 * @param    WC_Product  $product    Product object.
 	 * @return   string                  Content with replaced placeholders.
 	 */
-	private function parse_placeholders( $content, $order, $product ) {
+	private function parse_placeholders( $content, $order, $product, $voucher_data = array() ) {
 		$placeholders = array(
 			'{{customer_name}}' => $order->get_billing_first_name(),
 			'{{customer_full_name}}' => $order->get_formatted_billing_full_name(),
@@ -492,6 +492,13 @@ class Bs_Custom_Mail_Email_Sender {
 			'{{product_name}}' => $product->get_name(),
 			'{{site_name}}' => get_bloginfo( 'name' ),
 			'{{site_url}}' => home_url(),
+			// Gutschein-Platzhalter
+			'{{gutschein_code}}' => isset( $voucher_data['gutschein_code'] ) ? $voucher_data['gutschein_code'] : '',
+			'{{gutschein_wert}}' => isset( $voucher_data['gutschein_wert'] ) ? $voucher_data['gutschein_wert'] : '',
+			'{{gutschein_ablauf}}' => isset( $voucher_data['gutschein_ablauf'] ) ? $voucher_data['gutschein_ablauf'] : '',
+			'{{empfaenger_name}}' => isset( $voucher_data['empfaenger_name'] ) ? $voucher_data['empfaenger_name'] : $order->get_billing_first_name(),
+			'{{persoenliche_nachricht}}' => isset( $voucher_data['persoenliche_nachricht'] ) ? $voucher_data['persoenliche_nachricht'] : '',
+			'{{pdf_url}}' => isset( $voucher_data['pdf_url'] ) ? $voucher_data['pdf_url'] : '',
 		);
 
 		return str_replace(
@@ -717,6 +724,146 @@ class Bs_Custom_Mail_Email_Sender {
 		</div>';
 
 		return $html;
+	}
+
+	/**
+	 * Send voucher email with PDF attachment.
+	 *
+	 * @since    2.0.0
+	 * @param    string      $to              Recipient email.
+	 * @param    array       $voucher_data    Voucher data including code, value, expiry, etc.
+	 * @param    WC_Order    $order           Order object.
+	 * @return   bool                         Success or failure.
+	 */
+	public function send_voucher_email( $to, $voucher_data, $order ) {
+		global $wpdb;
+
+		// Get the 'gutschein' template from database
+		$table_name = $wpdb->prefix . 'bs_custom_mail_templates';
+		$template = $wpdb->get_row( $wpdb->prepare(
+			"SELECT * FROM $table_name WHERE template_key = %s AND is_active = 1",
+			'gutschein'
+		) );
+
+		// Fallback to default voucher template if not found
+		if ( ! $template ) {
+			$template = $this->get_default_voucher_template();
+		}
+
+		$subject = $this->parse_placeholders( $template->subject, $order, null, $voucher_data );
+		$subject = '=?UTF-8?B?' . base64_encode( $subject ) . '?=';
+
+		$header = $this->parse_placeholders( $template->header_text, $order, null, $voucher_data );
+		$content = $this->parse_placeholders( $template->content, $order, null, $voucher_data );
+		$footer = $this->parse_placeholders( $template->footer_text, $order, null, $voucher_data );
+
+		// Build email body
+		$body = '<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>' . esc_html( $template->subject ) . '</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+	<table role="presentation" style="width: 100%; border-collapse: collapse;">
+		<tr>
+			<td style="padding: 0;">
+				<table role="presentation" style="width: 600px; margin: 0 auto; border-collapse: collapse; border: 1px solid #ddd;">
+					<tr>
+						<td>
+							' . $header . '
+						</td>
+					</tr>
+					<tr>
+						<td style="padding: 30px;">
+							' . $content . '
+						</td>
+					</tr>
+					<tr>
+						<td>
+							' . $footer . '
+						</td>
+					</tr>
+				</table>
+			</td>
+		</tr>
+	</table>
+</body>
+</html>';
+
+		// Set headers
+		$from_name = get_option( 'bs_custom_mail_from_name', get_bloginfo( 'name' ) );
+		$from_email = get_option( 'bs_custom_mail_from_email', get_option( 'admin_email' ) );
+
+		$headers = array(
+			'Content-Type: text/html; charset=UTF-8',
+			'From: ' . $from_name . ' <' . $from_email . '>',
+			'Reply-To: ' . $from_email,
+		);
+
+		// Attachments
+		$attachments = array();
+		if ( ! empty( $voucher_data['pdf_path'] ) && file_exists( $voucher_data['pdf_path'] ) ) {
+			$attachments[] = $voucher_data['pdf_path'];
+		}
+
+		// Send email
+		$sent = wp_mail( $to, $subject, $body, $headers, $attachments );
+
+		if ( $sent ) {
+			do_action( 'bs_custom_mail_voucher_sent', $to, $voucher_data, $order );
+		} else {
+			error_log( 'BS Custom Mail: Failed to send voucher email to ' . $to );
+			do_action( 'bs_custom_mail_voucher_failed', $to, $voucher_data, $order );
+		}
+
+		return $sent;
+	}
+
+	/**
+	 * Get default voucher email template.
+	 *
+	 * @since    2.0.0
+	 * @return   object   Default template object.
+	 */
+	private function get_default_voucher_template() {
+		return (object) array(
+			'template_key' => 'gutschein',
+			'template_name' => __( 'Gutschein', 'bs-custom-mail' ),
+			'subject' => __( '🎁 Ihr Wertgutschein - {{site_name}}', 'bs-custom-mail' ),
+			'header_text' => '<div style="text-align: center; padding: 40px; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); color: white;">
+				<div style="font-size: 48px; margin-bottom: 15px;">🎁</div>
+				<h1 style="margin: 0; font-size: 28px;">' . __( 'Ihr Wertgutschein', 'bs-custom-mail' ) . '</h1>
+			</div>',
+			'content' => '<h2>' . __( 'Hallo {{empfaenger_name}},', 'bs-custom-mail' ) . '</h2>
+				<p>' . __( 'vielen Dank für Ihren Gutscheinkauf!', 'bs-custom-mail' ) . '</p>
+				
+				{{persoenliche_nachricht}}
+				
+				<div style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); border-radius: 16px; padding: 30px; text-align: center; margin: 25px 0; border: 2px dashed #3b82f6;">
+					<p style="margin: 0 0 10px; color: #1e40af; font-weight: 600;">' . __( 'Gutscheincode', 'bs-custom-mail' ) . '</p>
+					<div style="font-family: monospace; font-size: 24px; font-weight: bold; color: #1e3a8a; background: white; padding: 15px 25px; border-radius: 8px; display: inline-block; margin: 15px 0; letter-spacing: 2px;">
+						{{gutschein_code}}
+					</div>
+					<div style="font-size: 36px; font-weight: bold; color: #059669; margin: 15px 0;">
+						{{gutschein_wert}}
+					</div>
+					<p style="margin: 10px 0 0; color: #6b7280; font-size: 14px;">
+						' . __( 'Gültig bis', 'bs-custom-mail' ) . ': {{gutschein_ablauf}}
+					</p>
+				</div>
+				
+				<p style="text-align: center;">
+					' . __( 'Der Gutschein ist im Anhang als PDF beigefügt.', 'bs-custom-mail' ) . '
+				</p>',
+			'footer_text' => '<div style="text-align: center; padding: 30px; background: #1e3a8a; color: white;">
+				<p style="margin: 0 0 10px; font-size: 16px; font-weight: 600;">{{site_name}}</p>
+				<p style="margin: 0;">
+					<a href="{{site_url}}" style="color: #93c5fd; text-decoration: none;">{{site_url}}</a>
+				</p>
+			</div>',
+		);
 	}
 
 }

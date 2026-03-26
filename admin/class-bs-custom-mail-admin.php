@@ -114,7 +114,20 @@ class Bs_Custom_Mail_Admin {
 	 */
 	public function enqueue_react_app( $hook ) {
 		// Only load on plugin admin pages
-		if ( strpos( $hook, 'bs-custom-mail' ) === false ) {
+		// Check if we're on any of our plugin pages
+		$is_plugin_page = false;
+		
+		// Check for main plugin pages
+		if ( strpos( $hook, 'bs-custom-mail' ) !== false ) {
+			$is_plugin_page = true;
+		}
+		
+		// Check for menu page or submenu pages
+		if ( strpos( $hook, 'page_bs-custom-mail' ) !== false ) {
+			$is_plugin_page = true;
+		}
+		
+		if ( ! $is_plugin_page ) {
 			return;
 		}
 
@@ -197,6 +210,16 @@ class Bs_Custom_Mail_Admin {
 			'manage_options',
 			'bs-custom-mail-stats',
 			array( $this, 'display_stats_page' )
+		);
+
+		// Voucher submenu pages (use same display function - React handles routing)
+		add_submenu_page(
+			'bs-custom-mail',
+			__( 'Gutscheine', 'bs-custom-mail' ),
+			__( '🎁 Gutscheine', 'bs-custom-mail' ),
+			'manage_options',
+			'bs-custom-mail-vouchers',
+			array( $this, 'display_react_app_page' )
 		);
 	}
 
@@ -289,6 +312,16 @@ class Bs_Custom_Mail_Admin {
 		);
 
 		require_once plugin_dir_path( __FILE__ ) . 'partials/bs-custom-mail-admin-stats.php';
+	}
+
+	/**
+	 * Display React app page for vouchers and PDF templates.
+	 *
+	 * @since    2.0.0
+	 */
+	public function display_react_app_page() {
+		// The React app will handle routing based on the page parameter
+		echo '<div id="bs-custom-mail-admin-app"></div>';
 	}
 
 	/**
