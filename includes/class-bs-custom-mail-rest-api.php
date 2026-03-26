@@ -724,9 +724,16 @@ class Bs_Custom_Mail_REST_API {
 		if ( is_dir( $templates_dir ) ) {
 			$files = glob( $templates_dir . '*.txt' );
 			
+			if ( $files === false ) {
+				$files = array();
+			}
+			
 			foreach ( $files as $file ) {
 				$filename = basename( $file, '.txt' );
 				$content = file_get_contents( $file );
+				
+				// Remove BOM if present
+				$content = preg_replace( '/^\xEF\xBB\xBF/', '', $content );
 				
 				// Parse subject from first lines
 				$lines = explode( "\n", $content );
@@ -739,14 +746,24 @@ class Bs_Custom_Mail_REST_API {
 					}
 				}
 				
+				// Create a nice display name
+				$display_name = $filename;
+				$display_name = str_replace( array( 'Email Text ', 'Email ' ), '', $display_name );
+				$display_name = str_replace( array( 'SBF SEE & Binnen', 'SBF See' ), 'SBF See', $display_name );
+				
 				$templates[] = array(
-					'filename' => $filename,
-					'name' => str_replace( array( 'Email Text ', 'Email ' ), '', $filename ),
+					'filename' => $filename . '.txt',
+					'name' => $display_name,
 					'subject' => $subject,
 					'content' => $content,
 				);
 			}
 		}
+		
+		// Sort templates alphabetically
+		usort( $templates, function( $a, $b ) {
+			return strcmp( $a['name'], $b['name'] );
+		});
 		
 		return rest_ensure_response( $templates );
 	}

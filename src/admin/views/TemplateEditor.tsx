@@ -66,8 +66,11 @@ export function TemplateEditor( { mode, templateKey, onNavigate }: TemplateEdito
 				( t ) => t.filename === selectedDefaultTemplate 
 			);
 			if ( defaultTemplate ) {
-					// Convert plain text to HTML with proper formatting
-				const content = defaultTemplate.content
+				// Convert plain text to HTML with proper formatting
+				let content = defaultTemplate.content;
+				
+				// Convert to HTML
+				content = content
 					.replace( /\n\n/g, '</p><p>' )
 					.replace( /\n/g, '<br>' )
 					.replace( /^(.+)$/gm, '<p>$1</p>' )
@@ -212,7 +215,12 @@ export function TemplateEditor( { mode, templateKey, onNavigate }: TemplateEdito
 									value={ selectedDefaultTemplate }
 									options={ defaultTemplateOptions }
 									onChange={ setSelectedDefaultTemplate }
-									help={ __( 'Wähle eine Vorlage als Ausgangspunkt', 'bs-custom-mail' ) }
+									help={ isDefaultTemplatesLoading 
+										? __( 'Lade Vorlagen...', 'bs-custom-mail' ) 
+										: defaultTemplates.length === 0 
+											? __( 'Keine Vorlagen gefunden', 'bs-custom-mail' )
+											: `${ defaultTemplates.length } ${ __( 'Vorlagen verfügbar', 'bs-custom-mail' ) }`
+									}
 									disabled={ isDefaultTemplatesLoading }
 								/>
 							</CardBody>
@@ -222,23 +230,24 @@ export function TemplateEditor( { mode, templateKey, onNavigate }: TemplateEdito
 					{ mode === 'create' && (
 						<Card className="bs-card-warning">
 							<CardHeader>
-								<h3>{ __( 'Wichtig: Template Key', 'bs-custom-mail' ) }</h3>
+								<h3>{ __( 'Template Details', 'bs-custom-mail' ) }</h3>
 							</CardHeader>
 							<CardBody>
 								<TextControl
-									label={ __( 'Template Key', 'bs-custom-mail' ) }
+									label={ __( 'Template Key *', 'bs-custom-mail' ) }
+									help={ __(
+										'Eindeutiger Identifikator (z.B. sbf_see, gutschein). Nur Kleinbuchstaben, Zahlen und Unterstriche. Wird für die Zuordnung zu Produkten verwendet.',
+										'bs-custom-mail'
+									) }
 									value={ template.template_key }
 									onChange={ ( template_key ) =>
 										setTemplate( { ...template, template_key } )
 									}
-									help={ __(
-										'Nur Kleinbuchstaben, Zahlen und Unterstriche. Kann später nicht geändert werden.',
-										'bs-custom-mail'
-									) }
 									required
 								/>
 								<TextControl
-									label={ __( 'Template Name', 'bs-custom-mail' ) }
+									label={ __( 'Template Name *', 'bs-custom-mail' ) }
+									help={ __( 'Anzeigename im Admin', 'bs-custom-mail' ) }
 									value={ template.template_name }
 									onChange={ ( template_name ) =>
 										setTemplate( { ...template, template_name } )
@@ -255,7 +264,7 @@ export function TemplateEditor( { mode, templateKey, onNavigate }: TemplateEdito
 						</CardHeader>
 						<CardBody>
 							<TextControl
-								label={ __( 'Betreff', 'bs-custom-mail' ) }
+								label={ __( 'Betreff *', 'bs-custom-mail' ) }
 								value={ template.subject }
 								onChange={ ( subject ) => setTemplate( { ...template, subject } ) }
 								required
@@ -274,7 +283,7 @@ export function TemplateEditor( { mode, templateKey, onNavigate }: TemplateEdito
 							<RichTextEditor
 								value={ template.content }
 								onChange={ ( content ) => setTemplate( { ...template, content } ) }
-								placeholder={ __( 'E-Mail Inhalt hier eingeben...', 'bs-custom-mail' ) }
+								placeholder={ __( 'E-Mail Inhalt hier eingeben... Platzhalter wie {{Kundenname}} werden automatisch ersetzt.', 'bs-custom-mail' ) }
 							/>
 						</CardBody>
 					</Card>
