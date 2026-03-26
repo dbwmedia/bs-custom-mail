@@ -1,0 +1,42 @@
+{
+  "name": "bs-custom-mail",
+  "version": "2.0.0",
+  "description": "Automatisierte, produkt-spezifische Bestellbestätigungs-E-Mails für Bootsschule Berlin Köpenick",
+  "author": "Julio Litzenberg",
+  "license": "GPL-2.0+",
+  "private": true,
+  "scripts": {
+    "build": "wp-scripts build",
+    "check-engines": "wp-scripts check-engines",
+    "check-licenses": "wp-scripts check-licenses",
+    "format": "wp-scripts format",
+    "lint:css": "wp-scripts lint-style",
+    "lint:js": "wp-scripts lint-js",
+    "lint:md:docs": "wp-scripts lint-md-docs",
+    "lint:pkg-json": "wp-scripts lint-pkg-json",
+    "packages-update": "wp-scripts packages-update",
+    "plugin-zip": "wp-scripts plugin-zip",
+    "start": "wp-scripts start",
+    "test:e2e": "wp-scripts test-e2e",
+    "test:unit": "wp-scripts test-unit-js",
+    "test:unit:watch": "wp-scripts test-unit-js --watch"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@wordpress/scripts": "^27.0.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "@wordpress/api-fetch": "^6.48.0",
+    "@wordpress/components": "^27.0.0",
+    "@wordpress/compose": "^6.32.0",
+    "@wordpress/data": "^9.23.0",
+    "@wordpress/element": "^5.32.0",
+    "@wordpress/hooks": "^3.55.0",
+    "@wordpress/i18n": "^4.55.0",
+    "@wordpress/notices": "^4.23.0",
+    "@wordpress/media-utils": "^4.46.0",
+    "@wordpress/icons": "^9.46.0"
+  }
+}
