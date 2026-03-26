@@ -1195,11 +1195,50 @@ class Bs_Custom_Mail_REST_API {
 	public function create_pdf_template( $request ) {
 		global $wpdb;
 
+		// Debug logging
+		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+			error_log( 'BS Custom Mail: create_pdf_template called' );
+			error_log( 'Request params: ' . print_r( $request->get_params(), true ) );
+		}
+
 		$table_name = $wpdb->prefix . 'bs_custom_mail_pdf_templates';
+
+		// Check if table exists
+		$table_exists = $wpdb->get_var( "SHOW TABLES LIKE '{$table_name}'" );
+		if ( ! $table_exists ) {
+			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				error_log( 'BS Custom Mail: Table does not exist: ' . $table_name );
+			}
+			return new WP_Error(
+				'rest_table_not_found',
+				__( 'Database table does not exist. Please deactivate and reactivate the plugin.', 'bs-custom-mail' ),
+				array( 'status' => 500 )
+			);
+		}
+
+		$template_key = $request->get_param( 'template_key' );
+		$template_name = $request->get_param( 'template_name' );
+		$attachment_id = $request->get_param( 'attachment_id' );
+
+		if ( empty( $template_key ) ) {
+			return new WP_Error(
+				'rest_missing_template_key',
+				__( 'Template key is required.', 'bs-custom-mail' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		if ( empty( $template_name ) ) {
+			return new WP_Error(
+				'rest_missing_template_name',
+				__( 'Template name is required.', 'bs-custom-mail' ),
+				array( 'status' => 400 )
+			);
+		}
 
 		// Check if template key already exists
 		$existing = $wpdb->get_var(
-			$wpdb->prepare( "SELECT id FROM {$table_name} WHERE template_key = %s", $request->get_param( 'template_key' ) )
+			$wpdb->prepare( "SELECT id FROM {$table_name} WHERE template_key = %s", $template_key )
 		);
 
 		if ( $existing ) {
@@ -1210,31 +1249,59 @@ class Bs_Custom_Mail_REST_API {
 			);
 		}
 
+		if ( ! is_numeric( $attachment_id ) ) {
+			$attachment_id = 0;
+		}
+
+		$insert_data = array(
+			'template_name'   => sanitize_text_field( $template_name ),
+			'template_key'    => sanitize_text_field( $template_key ),
+			'attachment_id'   => intval( $attachment_id ),
+			'template_config' => $request->get_param( 'template_config' ) ?: '',
+			'font_size'       => intval( $request->get_param( 'font_size' ) ) ?: 16,
+			'is_active'       => 1,
+		);
+
+		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+			error_log( 'BS Custom Mail: Insert data: ' . print_r( $insert_data, true ) );
+		}
+
 		$result = $wpdb->insert(
 			$table_name,
-			array(
-				'template_name'   => $request->get_param( 'template_name' ),
-				'template_key'    => $request->get_param( 'template_key' ),
-				'attachment_id'   => $request->get_param( 'attachment_id' ),
-				'template_config' => $request->get_param( 'template_config' ),
-				'font_size'       => $request->get_param( 'font_size' ),
-				'is_active'       => 1,
-			),
+			$insert_data,
 			array( '%s', '%s', '%d', '%s', '%d', '%d' )
 		);
 
 		if ( false === $result ) {
+			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				error_log( 'BS Custom Mail: Database insert failed: ' . $wpdb->last_error );
+			}
 			return new WP_Error(
 				'rest_insert_failed',
-				__( 'Failed to create PDF template.', 'bs-custom-mail' ),
+				__( 'Failed to create PDF template: ', 'bs-custom-mail' ) . $wpdb->last_error,
 				array( 'status' => 500 )
 			);
 		}
 
 		$new_id = $wpdb->insert_id;
-		$request->set_param( 'id', $new_id );
+		
+		$template = $wpdb->get_row(
+			$wpdb->prepare( "SELECT * FROM {$table_name} WHERE id = %d", $new_id ),
+			ARRAY_A
+		);
 
-		return $this->get_pdf_template( $request );
+		if ( ! $template ) {
+			return new WP_Error(
+				'rest_template_not_found',
+				__( 'PDF Template not found after creation.', 'bs-custom-mail' ),
+				array( 'status' => 404 )
+			);
+		}
+
+		$template['attachment_url'] = $template['attachment_id'] ? wp_get_attachment_url( $template['attachment_id'] ) : '';
+		$template['template_config'] = json_decode( $template['template_config'], true );
+
+		return rest_ensure_response( $template );
 	}
 
 	/**
@@ -1283,11 +1350,19 @@ class Bs_Custom_Mail_REST_API {
 			return $this->get_pdf_template( $request );
 		}
 
-		$wpdb->update(
+		$result = $wpdb->update(
 			$table_name,
 			$update_data,
 			array( 'id' => $id )
 		);
+
+		if ( false === $result ) {
+			return new WP_Error(
+				'rest_update_failed',
+				__( 'Failed to update PDF template: ', 'bs-custom-mail' ) . $wpdb->last_error,
+				array( 'status' => 500 )
+			);
+		}
 
 		return $this->get_pdf_template( $request );
 	}

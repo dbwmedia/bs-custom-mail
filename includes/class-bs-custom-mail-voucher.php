@@ -127,6 +127,8 @@ class Bs_Custom_Mail_Voucher {
 
 		$is_voucher = get_post_meta( $post->ID, '_bs_custom_mail_voucher', true );
 		$pdf_template_id = get_post_meta( $post->ID, '_bs_custom_mail_voucher_pdf_template', true );
+		$fixed_price = get_post_meta( $post->ID, '_bs_custom_mail_voucher_fixed_price', true );
+		$fixed_price_value = get_post_meta( $post->ID, '_bs_custom_mail_voucher_fixed_price_value', true ) ?: '';
 		$min_price = get_post_meta( $post->ID, '_bs_custom_mail_voucher_min_price', true ) ?: 10;
 		$max_price = get_post_meta( $post->ID, '_bs_custom_mail_voucher_max_price', true ) ?: 1000;
 
@@ -146,8 +148,29 @@ class Bs_Custom_Mail_Voucher {
 		// PDF Template selection
 		$this->render_pdf_template_selector( $pdf_template_id );
 
-		// Price range
-		echo '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;">';
+		// Fixed price option
+		woocommerce_wp_checkbox( array(
+			'id' => '_bs_custom_mail_voucher_fixed_price',
+			'label' => __( 'Fester Gutscheinwert', 'bs-custom-mail' ),
+			'description' => __( 'Aktivieren, um einen festen Wert für diesen Gutschein festzulegen (statt variabel vom Kunden eingegeben).', 'bs-custom-mail' ),
+			'value' => $fixed_price
+		) );
+
+		// Fixed price value
+		echo '<div class="bs-voucher-fixed-price" style="margin: 15px 0; padding: 15px; background: #fff; border-radius: 6px; ' . ( $fixed_price !== 'yes' ? 'display:none;' : '' ) . '">';
+		woocommerce_wp_text_input( array(
+			'id' => '_bs_custom_mail_voucher_fixed_price_value',
+			'label' => __( 'Fester Wert (€)', 'bs-custom-mail' ),
+			'type' => 'number',
+			'value' => $fixed_price_value,
+			'custom_attributes' => array( 'min' => '1', 'step' => '0.01' ),
+			'desc_tip' => true,
+			'description' => __( 'Der Gutschein hat immer diesen Wert, unabhängig vom Produktpreis.', 'bs-custom-mail' )
+		) );
+		echo '</div>';
+
+		// Price range (variable)
+		echo '<div class="bs-voucher-price-range" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px; ' . ( $fixed_price === 'yes' ? 'display:none;' : '' ) . '">';
 		woocommerce_wp_text_input( array(
 			'id' => '_bs_custom_mail_voucher_min_price',
 			'label' => __( 'Mindestbetrag (€)', 'bs-custom-mail' ),
@@ -176,6 +199,16 @@ class Bs_Custom_Mail_Voucher {
 					$('.bs-voucher-settings').slideDown();
 				} else {
 					$('.bs-voucher-settings').slideUp();
+				}
+			});
+
+			$('#_bs_custom_mail_voucher_fixed_price').on('change', function() {
+				if ($(this).is(':checked')) {
+					$('.bs-voucher-fixed-price').slideDown();
+					$('.bs-voucher-price-range').slideUp();
+				} else {
+					$('.bs-voucher-fixed-price').slideUp();
+					$('.bs-voucher-price-range').slideDown();
 				}
 			});
 		});
@@ -222,6 +255,14 @@ class Bs_Custom_Mail_Voucher {
 			update_post_meta( $post_id, '_bs_custom_mail_voucher_pdf_template', intval( $_POST['_bs_custom_mail_voucher_pdf_template'] ) );
 		}
 
+		// Fixed price option
+		$fixed_price = isset( $_POST['_bs_custom_mail_voucher_fixed_price'] ) ? 'yes' : 'no';
+		update_post_meta( $post_id, '_bs_custom_mail_voucher_fixed_price', $fixed_price );
+
+		if ( isset( $_POST['_bs_custom_mail_voucher_fixed_price_value'] ) ) {
+			update_post_meta( $post_id, '_bs_custom_mail_voucher_fixed_price_value', floatval( $_POST['_bs_custom_mail_voucher_fixed_price_value'] ) );
+		}
+
 		if ( isset( $_POST['_bs_custom_mail_voucher_min_price'] ) ) {
 			update_post_meta( $post_id, '_bs_custom_mail_voucher_min_price', floatval( $_POST['_bs_custom_mail_voucher_min_price'] ) );
 		}
@@ -250,73 +291,127 @@ class Bs_Custom_Mail_Voucher {
 			return;
 		}
 
+		// Check for fixed price
+		$fixed_price = get_post_meta( $product_id, '_bs_custom_mail_voucher_fixed_price', true );
+		$fixed_price_value = get_post_meta( $product_id, '_bs_custom_mail_voucher_fixed_price_value', true );
+		$has_fixed_price = ( $fixed_price === 'yes' && ! empty( $fixed_price_value ) );
+
 		$min_price = get_post_meta( $product_id, '_bs_custom_mail_voucher_min_price', true ) ?: 10;
 		$max_price = get_post_meta( $product_id, '_bs_custom_mail_voucher_max_price', true ) ?: 1000;
 
+		// Generate unique ID for this instance
+		$instance_id = 'bs-voucher-' . $product_id;
 		?>
-		<div class="bs-voucher-frontend" style="margin: 25px 0; padding: 25px; background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); border: 2px solid #2271b1;">
-			<h4 style="margin: 0 0 20px 0; color: #1e293b; font-size: 18px;">🎁 <?php _e( 'Gutschein personalisieren', 'bs-custom-mail' ); ?></h4>
-
-			<div style="display: grid; gap: 20px;">
-				<!-- Voucher Value -->
+		<div class="bs-voucher-container" style="margin: 30px 0; border: 1px solid #e5e7eb; border-radius: 12px; background: #fff;">
+			<!-- Header -->
+			<div style="padding: 20px 24px; border-bottom: 1px solid #f3f4f6; display: flex; align-items: center; gap: 12px;">
+				<div style="width: 40px; height: 40px; background: #000; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 20px;">🎁</div>
 				<div>
-					<label for="bs_voucher_value" style="font-weight: 600; display: block; margin-bottom: 8px; color: #374151;">
-						<?php _e( 'Gutscheinwert (€)', 'bs-custom-mail' ); ?> *
+					<h4 style="margin: 0; font-size: 16px; font-weight: 600; color: #111827;"><?php _e( 'Gutschein', 'bs-custom-mail' ); ?></h4>
+					<p style="margin: 2px 0 0; font-size: 13px; color: #6b7280;"><?php _e( 'Personalisiere deinen Geschenkgutschein', 'bs-custom-mail' ); ?></p>
+				</div>
+			</div>
+
+			<div style="padding: 24px;">
+				<!-- Voucher Value Section -->
+				<div style="margin-bottom: 24px;">
+					<?php if ( $has_fixed_price ) : ?>
+						<!-- Fixed Price Display -->
+						<div style="background: #f9fafb; border: 2px solid #000; border-radius: 12px; padding: 24px; text-align: center;">
+							<span style="display: block; font-size: 13px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;"><?php _e( 'Gutscheinwert', 'bs-custom-mail' ); ?></span>
+							<div style="font-size: 42px; font-weight: 800; color: #000; line-height: 1;">
+								<?php echo wc_price( $fixed_price_value ); ?>
+							</div>
+							<?php if ( $product->get_price() != $fixed_price_value ) : ?>
+								<div style="margin-top: 8px; font-size: 13px; color: #6b7280;">
+									<?php printf( __( 'Produktpreis: %s', 'bs-custom-mail' ), $product->get_price_html() ); ?>
+								</div>
+							<?php endif; ?>
+							<input type="hidden" name="bs_voucher_value" value="<?php echo esc_attr( $fixed_price_value ); ?>">
+						</div>
+					<?php else : ?>
+						<!-- Variable Price Input -->
+						<label style="display: block; font-size: 13px; font-weight: 600; color: #374151; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">
+							<?php _e( 'Gutscheinwert', 'bs-custom-mail' ); ?> *
+						</label>
+						<div style="position: relative;">
+							<input type="number"
+								   id="bs_voucher_value_<?php echo $instance_id; ?>"
+								   name="bs_voucher_value"
+								   step="0.01"
+								   min="<?php echo esc_attr( $min_price ); ?>"
+								   max="<?php echo esc_attr( $max_price ); ?>"
+								   placeholder="0.00"
+								   required
+								   style="width: 100%; padding: 16px 16px 16px 48px; font-size: 24px; font-weight: 600; border: 1px solid #e5e7eb; border-radius: 10px; transition: border-color 0.2s;"
+								   onfocus="this.style.borderColor='#000'"
+								   onblur="this.style.borderColor='#e5e7eb'">
+							<span style="position: absolute; left: 20px; top: 50%; transform: translateY(-50%); font-size: 20px; color: #6b7280; font-weight: 500;">€</span>
+						</div>
+						<div style="display: flex; gap: 16px; margin-top: 10px;">
+							<span style="font-size: 12px; color: #6b7280;"><?php printf( __( 'Min: %s€', 'bs-custom-mail' ), $min_price ); ?></span>
+							<span style="font-size: 12px; color: #6b7280;"><?php printf( __( 'Max: %s€', 'bs-custom-mail' ), $max_price ); ?></span>
+						</div>
+					<?php endif; ?>
+				</div>
+
+				<!-- Gift Toggle -->
+				<div style="border-top: 1px solid #f3f4f6; padding-top: 20px;">
+					<label style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+						<input type="checkbox" 
+							   id="bs_voucher_gift_toggle_<?php echo $instance_id; ?>"
+							   style="width: 20px; height: 20px; accent-color: #000; cursor: pointer;"
+							   onchange="document.getElementById('bs_voucher_gift_fields_<?php echo $instance_id; ?>').style.display = this.checked ? 'block' : 'none'">
+						<span style="font-size: 15px; font-weight: 500; color: #111827;"><?php _e( 'Als Geschenk versenden', 'bs-custom-mail' ); ?></span>
 					</label>
-					<div style="position: relative;">
-						<input type="number"
-							   id="bs_voucher_value"
-							   name="bs_voucher_value"
-							   step="0.01"
-							   min="<?php echo esc_attr( $min_price ); ?>"
-							   max="<?php echo esc_attr( $max_price ); ?>"
-							   placeholder="z.B. 150"
-							   required
-							   style="width: 100%; padding: 16px 16px 16px 40px; font-size: 20px; border: 2px solid #e2e8f0; border-radius: 12px; text-align: left; font-weight: bold;">
-						<span style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); font-size: 20px; color: #6b7280;">€</span>
+				</div>
+
+				<!-- Gift Fields (Hidden by default) -->
+				<div id="bs_voucher_gift_fields_<?php echo $instance_id; ?>" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid #f3f4f6;">
+					<div style="display: grid; gap: 16px;">
+						<!-- Recipient Email -->
+						<div>
+							<label for="bs_voucher_recipient_<?php echo $instance_id; ?>" style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 6px;">
+								<?php _e( 'E-Mail des Empfängers', 'bs-custom-mail' ); ?>
+							</label>
+							<input type="email"
+								   id="bs_voucher_recipient_<?php echo $instance_id; ?>"
+								   name="bs_voucher_recipient"
+								   placeholder="max.mustermann@beispiel.de"
+								   style="width: 100%; padding: 12px 16px; font-size: 15px; border: 1px solid #e5e7eb; border-radius: 8px; transition: border-color 0.2s;"
+								   onfocus="this.style.borderColor='#000'"
+								   onblur="this.style.borderColor='#e5e7eb'">
+							<span style="font-size: 12px; color: #9ca3af; margin-top: 4px; display: block;"><?php _e( 'Wenn leer, erhalten Sie den Gutschein', 'bs-custom-mail' ); ?></span>
+						</div>
+
+						<!-- Recipient Name -->
+						<div>
+							<label for="bs_voucher_recipient_name_<?php echo $instance_id; ?>" style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 6px;">
+								<?php _e( 'Name des Empfängers', 'bs-custom-mail' ); ?>
+							</label>
+							<input type="text"
+								   id="bs_voucher_recipient_name_<?php echo $instance_id; ?>"
+								   name="bs_voucher_recipient_name"
+								   placeholder="Max Mustermann"
+								   style="width: 100%; padding: 12px 16px; font-size: 15px; border: 1px solid #e5e7eb; border-radius: 8px; transition: border-color 0.2s;"
+								   onfocus="this.style.borderColor='#000'"
+								   onblur="this.style.borderColor='#e5e7eb'">
+						</div>
+
+						<!-- Personal Message -->
+						<div>
+							<label for="bs_voucher_message_<?php echo $instance_id; ?>" style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 6px;">
+								<?php _e( 'Persönliche Nachricht', 'bs-custom-mail' ); ?>
+							</label>
+							<textarea id="bs_voucher_message_<?php echo $instance_id; ?>"
+									  name="bs_voucher_message"
+									  rows="3"
+									  placeholder="Herzlichen Glückwunsch zum Geburtstag! 🎉"
+									  style="width: 100%; padding: 12px 16px; font-size: 15px; border: 1px solid #e5e7eb; border-radius: 8px; resize: vertical; transition: border-color 0.2s;"
+									  onfocus="this.style.borderColor='#000'"
+									  onblur="this.style.borderColor='#e5e7eb'"></textarea>
+						</div>
 					</div>
-					<small style="color: #6b7280; font-size: 12px; display: block; margin-top: 8px;">
-						<?php printf( __( 'Mindestbetrag: %s€ | Höchstbetrag: %s€', 'bs-custom-mail' ), $min_price, $max_price ); ?>
-					</small>
-				</div>
-
-				<!-- Recipient Email -->
-				<div>
-					<label for="bs_voucher_recipient" style="font-weight: 600; display: block; margin-bottom: 8px; color: #374151;">
-						<?php _e( 'Empfänger E-Mail (optional)', 'bs-custom-mail' ); ?>
-					</label>
-					<input type="email"
-						   id="bs_voucher_recipient"
-						   name="bs_voucher_recipient"
-						   placeholder="geschenk@freund.de"
-						   style="width: 100%; padding: 16px; font-size: 16px; border: 2px solid #e2e8f0; border-radius: 12px;">
-					<small style="color: #6b7280; font-size: 12px; display: block; margin-top: 8px;">
-						<?php _e( 'Wenn leer, wird der Gutschein an Ihre E-Mail-Adresse gesendet.', 'bs-custom-mail' ); ?>
-					</small>
-				</div>
-
-				<!-- Recipient Name -->
-				<div>
-					<label for="bs_voucher_recipient_name" style="font-weight: 600; display: block; margin-bottom: 8px; color: #374151;">
-						<?php _e( 'Empfänger Name (optional)', 'bs-custom-mail' ); ?>
-					</label>
-					<input type="text"
-						   id="bs_voucher_recipient_name"
-						   name="bs_voucher_recipient_name"
-						   placeholder="Max Mustermann"
-						   style="width: 100%; padding: 16px; font-size: 16px; border: 2px solid #e2e8f0; border-radius: 12px;">
-				</div>
-
-				<!-- Personal Message -->
-				<div>
-					<label for="bs_voucher_message" style="font-weight: 600; display: block; margin-bottom: 8px; color: #374151;">
-						<?php _e( 'Persönliche Nachricht (optional)', 'bs-custom-mail' ); ?>
-					</label>
-					<textarea id="bs_voucher_message"
-							  name="bs_voucher_message"
-							  rows="3"
-							  placeholder="Alles Gute zum Geburtstag!"
-							  style="width: 100%; padding: 16px; font-size: 16px; border: 2px solid #e2e8f0; border-radius: 12px; resize: vertical;"></textarea>
 				</div>
 			</div>
 		</div>
@@ -337,7 +432,16 @@ class Bs_Custom_Mail_Voucher {
 			return $cart_item_data;
 		}
 
-		if ( isset( $_POST['bs_voucher_value'] ) ) {
+		// Check for fixed price
+		$fixed_price = get_post_meta( $product_id, '_bs_custom_mail_voucher_fixed_price', true );
+		$fixed_price_value = get_post_meta( $product_id, '_bs_custom_mail_voucher_fixed_price_value', true );
+		$has_fixed_price = ( $fixed_price === 'yes' && ! empty( $fixed_price_value ) );
+
+		if ( $has_fixed_price ) {
+			// Use fixed price value
+			$cart_item_data['bs_voucher_value'] = floatval( $fixed_price_value );
+		} elseif ( isset( $_POST['bs_voucher_value'] ) ) {
+			// Use user-entered value
 			$cart_item_data['bs_voucher_value'] = floatval( sanitize_text_field( $_POST['bs_voucher_value'] ) );
 		}
 

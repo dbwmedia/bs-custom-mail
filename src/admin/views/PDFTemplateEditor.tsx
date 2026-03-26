@@ -124,6 +124,13 @@ export function PDFTemplateEditor({
     }
   }, [isDragging, handleMouseMove, handleMouseUp])
 
+  // Helper function to safely stringify config (handles BigInt values)
+  const safeStringify = (obj: any): string => {
+    return JSON.stringify(obj, (_, value) =>
+      typeof value === 'bigint' ? Number(value) : value
+    )
+  }
+
   const handleSaveClick = async () => {
     setSaving(true)
     try {
@@ -139,7 +146,7 @@ export function PDFTemplateEditor({
         template_name: templateName,
         template_key: key,
         attachment_id: parseInt(attachmentId.toString(), 10),
-        template_config: JSON.stringify(config),
+        template_config: safeStringify(config),
         font_size: 16,
       }
 
@@ -164,7 +171,13 @@ export function PDFTemplateEditor({
       }
     } catch (error: any) {
       console.error('Error saving PDF template:', error)
-      const errorMessage = error?.message || __('Unbekannter Fehler', 'bs-custom-mail')
+      // Try to extract detailed error message from WordPress REST API
+      let errorMessage = __('Unbekannter Fehler', 'bs-custom-mail')
+      if (error?.code && error?.message) {
+        errorMessage = `[${error.code}] ${error.message}`
+      } else if (error?.message) {
+        errorMessage = error.message
+      }
       alert(__('Fehler beim Speichern: ', 'bs-custom-mail') + errorMessage)
     } finally {
       setSaving(false)
