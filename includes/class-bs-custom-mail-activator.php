@@ -229,10 +229,7 @@ class Bs_Custom_Mail_Activator {
 	 * @return   string
 	 */
 	private static function get_default_header() {
-		return '<div style="text-align: center; padding: 20px; background: #003366;">
-			<h1 style="color: #ffffff; margin: 0;">Bootsschule Berlin Köpenick</h1>
-			<p style="color: #ffffff; margin: 10px 0 0 0;">Willkommen bei Ihrer Bootsschulausbildung!</p>
-		</div>';
+		return ''; // Header is now built into the email template
 	}
 
 	/**
@@ -242,12 +239,7 @@ class Bs_Custom_Mail_Activator {
 	 * @return   string
 	 */
 	private static function get_default_footer() {
-		return '<div style="text-align: center; padding: 20px; background: #f5f5f5; font-size: 12px; color: #666;">
-			<p><strong>Bootsschule Berlin Köpenick</strong><br>
-			Grünauer Str. 3, 12557 Berlin<br>
-			Tel: 0163/6298589 | E-Mail: info@bootsschule-koepenick.de</p>
-			<p><a href="https://bootsschule-koepenick.de/impressum">Impressum</a> | <a href="https://bootsschule-koepenick.de/datenschutz">Datenschutz</a></p>
-		</div>';
+		return ''; // Footer is now built into the email template
 	}
 
 	/**
