@@ -1,0 +1,165 @@
+# =============================================================================
+# WordPress Plugin GitIgnore
+# Bootsschule Custom Mail Plugin
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Dependencies
+# -----------------------------------------------------------------------------
+node_modules/
+vendor/
+composer.lock
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# -----------------------------------------------------------------------------
+# Build & Distribution
+# -----------------------------------------------------------------------------
+dist/
+build/
+*.zip
+*.tar.gz
+*.tar
+
+# -----------------------------------------------------------------------------
+# WordPress
+# -----------------------------------------------------------------------------
+# Falls das Plugin in einer vollständigen WordPress-Installation entwickelt wird
+/wp-admin/
+/wp-content/
+/wp-includes/
+*.log
+wp-config.php
+wp-config-local.php
+.htaccess
+
+# -----------------------------------------------------------------------------
+# OS Generated Files
+# -----------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# -----------------------------------------------------------------------------
+# IDE & Editor
+# -----------------------------------------------------------------------------
+# PhpStorm / IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# VS Code
+.vscode/
+*.code-workspace
+.history/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+
+# NetBeans
+nbproject/
+
+# Eclipse
+.buildpath
+.project
+.settings/
+
+# -----------------------------------------------------------------------------
+# Logs & Temporary Files
+# -----------------------------------------------------------------------------
+*.log
+*.tmp
+*.temp
+*.cache
+debug.log
+error.log
+access.log
+
+# -----------------------------------------------------------------------------
+# Testing
+# -----------------------------------------------------------------------------
+coverage/
+.phpunit.result.cache
+.phpunit.cache/
+phpunit.xml.dist.bak
+
+# -----------------------------------------------------------------------------
+# Sensitive Configuration
+# -----------------------------------------------------------------------------
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# -----------------------------------------------------------------------------
+# macOS
+# -----------------------------------------------------------------------------
+.AppleDouble
+.LSOverride
+Icon
+
+# -----------------------------------------------------------------------------
+# Windows
+# -----------------------------------------------------------------------------
+*.cab
+*.msi
+*.msm
+*.msp
+
+# -----------------------------------------------------------------------------
+# Backup Files
+# -----------------------------------------------------------------------------
+*.bak
+*.backup
+*.old
+*.orig
+
+# -----------------------------------------------------------------------------
+# Plugin-spezifische Ausschlüsse
+# -----------------------------------------------------------------------------
+# Uploads/Anhänge die zur Laufzeit generiert werden
+/uploads/
+/temp/
+
+# Lokale Entwicklungs-Skripte
+local-*
+dev-*
+
+# Product Requirements Document
+PRD.md
+
+# AI Agents
+.agents/
+AGENTS.md
+
+# AI Agents Skills
+.agents/skills/
+.agents/skills/wordpress/
+.agents/skills/wordpress/sub-skills/
+.agents/skills/wordpress/sub-skills/wp-blocks/
+.agents/skills/wordpress/sub-skills/wp-rest-api/
+.agents/skills/wordpress/sub-skills/wp-database/
+.agents/skills/wordpress/sub-skills/wp-testing/
+.agents/skills/wordpress/sub-skills/wp-security/
+.agents/skills/wordpress/sub-skills/wp-deployment/

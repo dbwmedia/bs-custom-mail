@@ -75,13 +75,6 @@ class Bs_Custom_Mail_Admin {
 	public function enqueue_scripts( $hook ) {
 		$load_script = false;
 
-		// Load on plugin admin pages
-		if ( strpos( $hook, 'bs-custom-mail' ) !== false ) {
-			$load_script = true;
-			// Load WordPress Media Uploader for template attachments
-			wp_enqueue_media();
-		}
-
 		// Load on WooCommerce product edit page
 		if ( in_array( $hook, array( 'post.php', 'post-new.php' ), true ) ) {
 			$screen = get_current_screen();
@@ -111,6 +104,56 @@ class Bs_Custom_Mail_Admin {
 			'ajax_url' => admin_url( 'admin-ajax.php' ),
 			'nonce'    => wp_create_nonce( 'bs_custom_mail_nonce' ),
 		) );
+	}
+
+	/**
+	 * Enqueue React app for plugin admin pages
+	 *
+	 * @since    2.0.0
+	 * @param    string    $hook    Current admin page hook.
+	 */
+	public function enqueue_react_app( $hook ) {
+		// Only load on plugin admin pages
+		if ( strpos( $hook, 'bs-custom-mail' ) === false ) {
+			return;
+		}
+
+		// Load WordPress Media Uploader
+		wp_enqueue_media();
+
+		// Enqueue the built React app
+		$asset_file = plugin_dir_path( dirname( __FILE__ ) ) . 'build/admin.asset.php';
+		
+		if ( file_exists( $asset_file ) ) {
+			$asset = require $asset_file;
+			
+			wp_enqueue_script(
+				'bs-custom-mail-admin-app',
+				plugin_dir_url( dirname( __FILE__ ) ) . 'build/admin.js',
+				$asset['dependencies'],
+				$asset['version'],
+				true
+			);
+
+			wp_enqueue_style(
+				'bs-custom-mail-admin-app-style',
+				plugin_dir_url( dirname( __FILE__ ) ) . 'build/admin.css',
+				array(),
+				$asset['version']
+			);
+		}
+
+		// Localize data for the React app
+		wp_localize_script(
+			'bs-custom-mail-admin-app',
+			'bsCustomMailData',
+			array(
+				'restUrl'   => rest_url( 'bs-custom-mail/v1' ),
+				'restNonce' => wp_create_nonce( 'wp_rest' ),
+				'ajaxUrl'   => admin_url( 'admin-ajax.php' ),
+				'ajaxNonce' => wp_create_nonce( 'bs_custom_mail_nonce' ),
+			)
+		);
 	}
 
 	/**

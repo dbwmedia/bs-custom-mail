@@ -1,0 +1,39 @@
+{
+    "name": "jltzbrg/bs-custom-mail",
+    "description": "Bootsschule Custom Mail - WooCommerce Email Templates",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0+",
+    "authors": [
+        {
+            "name": "Julio Litzenberg",
+            "email": "jltbrg@gmail.com"
+        }
+    ],
+    "require": {
+        "php": ">=7.4"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.6",
+        "yoast/phpunit-polyfills": "^1.0",
+        "wp-coding-standards/wpcs": "^3.0",
+        "dealerdirect/phpcodesniffer-composer-installer": "^1.0"
+    },
+    "autoload": {
+        "classmap": [
+            "includes/",
+            "admin/",
+            "public/"
+        ]
+    },
+    "scripts": {
+        "test": "phpunit",
+        "test-coverage": "phpunit --coverage-html tests/coverage-report",
+        "phpcs": "phpcs --standard=WordPress includes/ admin/ public/",
+        "phpcbf": "phpcbf --standard=WordPress includes/ admin/ public/"
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
+    }
+}

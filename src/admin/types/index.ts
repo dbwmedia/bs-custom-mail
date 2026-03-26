@@ -1,0 +1,64 @@
+/**
+ * TypeScript types for BS Custom Mail Admin
+ */
+
+export interface Attachment {
+	id: number;
+	name: string;
+	extension: string;
+	size: string;
+	icon: string;
+}
+
+export interface Template {
+	id?: number;
+	template_key: string;
+	template_name: string;
+	subject: string;
+	header_text: string;
+	content: string;
+	footer_text: string;
+	attachments: Attachment[] | string;
+	is_active: boolean;
+	created_at?: string;
+	updated_at?: string;
+}
+
+export interface Settings {
+	trigger_status: string;
+	from_name: string;
+	from_email: string;
+}
+
+export interface Stats {
+	total_sent: number;
+	total_failed: number;
+	total_emails: number;
+	success_rate: number;
+	template_stats: TemplateStat[];
+}
+
+export interface TemplateStat {
+	template_name: string;
+	template_key: string;
+	sent_count: number;
+	failed_count: number;
+}
+
+export interface Activity {
+	id: number;
+	order_id: number;
+	customer_email: string;
+	product_name: string;
+	template_key: string;
+	status: 'sent' | 'failed' | 'template_not_found';
+	sent_at: string;
+}
+
+export interface Notice {
+	id: string;
+	status: 'success' | 'error' | 'warning' | 'info';
+	message: string;
+}
+
+export type ViewType = 'list' | 'create' | 'edit' | 'settings' | 'stats';

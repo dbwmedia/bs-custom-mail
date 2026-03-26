@@ -80,6 +80,7 @@ class Bs_Custom_Mail {
 		$this->define_public_hooks();
 		$this->define_woocommerce_hooks();
 		$this->define_product_hooks();
+		$this->define_rest_api_hooks();
 
 	}
 
@@ -94,6 +95,7 @@ class Bs_Custom_Mail {
 	 * - Bs_Custom_Mail_Public. Defines all hooks for the public side of the site.
 	 * - Bs_Custom_Mail_Email_Sender. Handles email sending functionality.
 	 * - Bs_Custom_Mail_Product. Handles product template assignment.
+	 * - Bs_Custom_Mail_REST_API. Handles REST API endpoints.
 	 *
 	 * Create an instance of the loader which will be used to register the hooks
 	 * with WordPress.
@@ -136,6 +138,11 @@ class Bs_Custom_Mail {
 		 */
 		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-bs-custom-mail-product.php';
 
+		/**
+		 * The class responsible for handling REST API endpoints.
+		 */
+		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-bs-custom-mail-rest-api.php';
+
 		$this->loader = new Bs_Custom_Mail_Loader();
 
 	}
@@ -170,6 +177,7 @@ class Bs_Custom_Mail {
 
 		$this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_styles' );
 		$this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_scripts' );
+		$this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_react_app' );
 		$this->loader->add_action( 'admin_menu', $plugin_admin, 'add_admin_menu' );
 		$this->loader->add_action( 'wp_ajax_bs_custom_mail_send_test', $plugin_admin, 'ajax_send_test_email' );
 
@@ -230,6 +238,16 @@ class Bs_Custom_Mail {
 		// AJAX handlers
 		$this->loader->add_action( 'wp_ajax_bs_custom_mail_preview_template', $product, 'ajax_preview_template' );
 
+	}
+
+	/**
+	 * Register REST API hooks
+	 *
+	 * @since    2.0.0
+	 * @access   private
+	 */
+	private function define_rest_api_hooks() {
+		new Bs_Custom_Mail_REST_API();
 	}
 
 	/**
