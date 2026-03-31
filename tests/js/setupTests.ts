@@ -3,8 +3,18 @@
  */
 import '@testing-library/jest-dom';
 
-// Mock WordPress globals
-(global as any).window.bsCustomMailData = {
+declare global {
+	interface Window {
+		bsCustomMailData: {
+			restUrl: string;
+			restNonce: string;
+			ajaxUrl: string;
+			ajaxNonce: string;
+		};
+	}
+}
+
+window.bsCustomMailData = {
 	restUrl: 'http://example.com/wp-json/bs-custom-mail/v1',
 	restNonce: 'test-nonce',
 	ajaxUrl: 'http://example.com/wp-admin/admin-ajax.php',
@@ -12,13 +22,12 @@ import '@testing-library/jest-dom';
 };
 
 // Mock console methods for cleaner test output
-global.console = {
-	...console,
-	// Suppress console.error and console.warn in tests unless explicitly needed
-	error: jest.fn(),
-	warn: jest.fn(),
-	log: jest.fn(),
-};
+// eslint-disable-next-line no-console
+console.error = jest.fn();
+// eslint-disable-next-line no-console
+console.warn = jest.fn();
+// eslint-disable-next-line no-console
+console.log = jest.fn();
 
 // Cleanup after each test
 afterEach(() => {

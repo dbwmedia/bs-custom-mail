@@ -12,19 +12,25 @@ interface UseTemplatesReturn {
 	updateTemplate: ( key: string, data: Partial<Template> ) => Promise<Template>;
 	deleteTemplate: ( key: string ) => Promise<void>;
 	sendTestEmail: ( key: string, email: string ) => Promise<{ success: boolean; message: string }>;
+	error: string | null;
 }
 
 export function useTemplates(): UseTemplatesReturn {
 	const [ templates, setTemplates ] = useState<Template[]>( [] );
 	const [ isLoading, setIsLoading ] = useState( false );
+	const [ error, setError ] = useState<string | null>( null );
 
 	const fetchTemplates = useCallback( async () => {
 		setIsLoading( true );
+		setError( null );
 		try {
 			const data = await apiFetch<Template[]>( {
 				path: '/bs-custom-mail/v1/templates',
 			} );
 			setTemplates( data );
+		} catch ( err ) {
+			const errorMessage = err instanceof Error ? err.message : 'Network error';
+			setError( errorMessage );
 		} finally {
 			setIsLoading( false );
 		}
@@ -82,5 +88,6 @@ export function useTemplates(): UseTemplatesReturn {
 		updateTemplate,
 		deleteTemplate,
 		sendTestEmail,
+		error,
 	};
 }

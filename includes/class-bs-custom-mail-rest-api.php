@@ -325,8 +325,9 @@ class Bs_Custom_Mail_REST_API {
 				'sanitize_callback' => 'sanitize_text_field',
 			),
 			'attachment_id' => array(
-				'required' => true,
+				'required' => false,
 				'type'     => 'integer',
+				'default'  => 0,
 			),
 			'template_config' => array(
 				'type'    => 'string',
@@ -335,6 +336,29 @@ class Bs_Custom_Mail_REST_API {
 			'font_size' => array(
 				'type'    => 'integer',
 				'default' => 16,
+			),
+			'paper_size' => array(
+				'type'    => 'string',
+				'default' => 'A4',
+				'enum'    => array( 'A4', 'A5', 'A6' ),
+			),
+			'orientation' => array(
+				'type'    => 'string',
+				'default' => 'portrait',
+				'enum'    => array( 'portrait', 'landscape' ),
+			),
+			'background_color' => array(
+				'type'    => 'string',
+				'default' => '#ffffff',
+			),
+			'background_type' => array(
+				'type'    => 'string',
+				'default' => 'color',
+				'enum'    => array( 'color', 'image' ),
+			),
+			'active_fields' => array(
+				'type'    => 'string',
+				'default' => '',
 			),
 		);
 	}
@@ -359,6 +383,24 @@ class Bs_Custom_Mail_REST_API {
 			),
 			'font_size' => array(
 				'type' => 'integer',
+			),
+			'paper_size' => array(
+				'type' => 'string',
+				'enum' => array( 'A4', 'A5', 'A6' ),
+			),
+			'orientation' => array(
+				'type' => 'string',
+				'enum' => array( 'portrait', 'landscape' ),
+			),
+			'background_color' => array(
+				'type' => 'string',
+			),
+			'background_type' => array(
+				'type' => 'string',
+				'enum' => array( 'color', 'image' ),
+			),
+			'active_fields' => array(
+				'type' => 'string',
 			),
 			'is_active' => array(
 				'type' => 'boolean',
@@ -1144,10 +1186,24 @@ class Bs_Custom_Mail_REST_API {
 		$table_name = $wpdb->prefix . 'bs_custom_mail_pdf_templates';
 		$templates  = $wpdb->get_results( "SELECT * FROM {$table_name} ORDER BY template_name ASC", ARRAY_A );
 
-		// Add attachment info
+		// Add attachment info and parse JSON fields
 		foreach ( $templates as &$template ) {
 			$template['attachment_url'] = $template['attachment_id'] ? wp_get_attachment_url( $template['attachment_id'] ) : '';
 			$template['template_config'] = json_decode( $template['template_config'], true );
+			$template['active_fields'] = json_decode( $template['active_fields'], true );
+			// Set defaults for new fields if not present
+			if ( empty( $template['paper_size'] ) ) {
+				$template['paper_size'] = 'A4';
+			}
+			if ( empty( $template['orientation'] ) ) {
+				$template['orientation'] = 'portrait';
+			}
+			if ( empty( $template['background_color'] ) ) {
+				$template['background_color'] = '#ffffff';
+			}
+			if ( empty( $template['background_type'] ) ) {
+				$template['background_type'] = 'color';
+			}
 		}
 
 		return rest_ensure_response( $templates );
@@ -1181,6 +1237,20 @@ class Bs_Custom_Mail_REST_API {
 
 		$template['attachment_url'] = $template['attachment_id'] ? wp_get_attachment_url( $template['attachment_id'] ) : '';
 		$template['template_config'] = json_decode( $template['template_config'], true );
+		$template['active_fields'] = json_decode( $template['active_fields'], true );
+		// Set defaults for new fields if not present
+		if ( empty( $template['paper_size'] ) ) {
+			$template['paper_size'] = 'A4';
+		}
+		if ( empty( $template['orientation'] ) ) {
+			$template['orientation'] = 'portrait';
+		}
+		if ( empty( $template['background_color'] ) ) {
+			$template['background_color'] = '#ffffff';
+		}
+		if ( empty( $template['background_type'] ) ) {
+			$template['background_type'] = 'color';
+		}
 
 		return rest_ensure_response( $template );
 	}
@@ -1254,12 +1324,17 @@ class Bs_Custom_Mail_REST_API {
 		}
 
 		$insert_data = array(
-			'template_name'   => sanitize_text_field( $template_name ),
-			'template_key'    => sanitize_text_field( $template_key ),
-			'attachment_id'   => intval( $attachment_id ),
-			'template_config' => $request->get_param( 'template_config' ) ?: '',
-			'font_size'       => intval( $request->get_param( 'font_size' ) ) ?: 16,
-			'is_active'       => 1,
+			'template_name'     => sanitize_text_field( $template_name ),
+			'template_key'      => sanitize_text_field( $template_key ),
+			'attachment_id'     => intval( $attachment_id ),
+			'template_config'   => $request->get_param( 'template_config' ) ?: '',
+			'font_size'         => intval( $request->get_param( 'font_size' ) ) ?: 16,
+			'paper_size'        => sanitize_text_field( $request->get_param( 'paper_size' ) ) ?: 'A4',
+			'orientation'       => sanitize_text_field( $request->get_param( 'orientation' ) ) ?: 'portrait',
+			'background_color'  => sanitize_text_field( $request->get_param( 'background_color' ) ) ?: '#ffffff',
+			'background_type'   => sanitize_text_field( $request->get_param( 'background_type' ) ) ?: 'color',
+			'active_fields'     => $request->get_param( 'active_fields' ) ?: '',
+			'is_active'         => 1,
 		);
 
 		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
@@ -1269,7 +1344,7 @@ class Bs_Custom_Mail_REST_API {
 		$result = $wpdb->insert(
 			$table_name,
 			$insert_data,
-			array( '%s', '%s', '%d', '%s', '%d', '%d' )
+			array( '%s', '%s', '%d', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%d' )
 		);
 
 		if ( false === $result ) {
@@ -1341,6 +1416,21 @@ class Bs_Custom_Mail_REST_API {
 		}
 		if ( $request->has_param( 'font_size' ) ) {
 			$update_data['font_size'] = intval( $request->get_param( 'font_size' ) );
+		}
+		if ( $request->has_param( 'paper_size' ) ) {
+			$update_data['paper_size'] = sanitize_text_field( $request->get_param( 'paper_size' ) );
+		}
+		if ( $request->has_param( 'orientation' ) ) {
+			$update_data['orientation'] = sanitize_text_field( $request->get_param( 'orientation' ) );
+		}
+		if ( $request->has_param( 'background_color' ) ) {
+			$update_data['background_color'] = sanitize_text_field( $request->get_param( 'background_color' ) );
+		}
+		if ( $request->has_param( 'background_type' ) ) {
+			$update_data['background_type'] = sanitize_text_field( $request->get_param( 'background_type' ) );
+		}
+		if ( $request->has_param( 'active_fields' ) ) {
+			$update_data['active_fields'] = $request->get_param( 'active_fields' );
 		}
 		if ( $request->has_param( 'is_active' ) ) {
 			$update_data['is_active'] = $request->get_param( 'is_active' ) ? 1 : 0;

@@ -3,6 +3,14 @@
  */
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { PlaceholderHelp } from '../../../src/admin/components/PlaceholderHelp';
+import { usePlaceholders } from '../../../src/admin/hooks';
+
+// Mock the hooks
+jest.mock('../../../src/admin/hooks', () => ({
+	usePlaceholders: jest.fn(),
+}));
+
+const mockedUsePlaceholders = usePlaceholders as jest.MockedFunction<typeof usePlaceholders>;
 
 // Mock clipboard API
 Object.assign(navigator, {
@@ -12,8 +20,18 @@ Object.assign(navigator, {
 });
 
 describe('PlaceholderHelp', () => {
+	const mockPlaceholders = [
+		{ code: '{{customer_name}}', label: 'Kundenname', description: 'Vorname des Kunden' },
+		{ code: '{{order_number}}', label: 'Bestellnummer', description: 'WooCommerce Bestellnummer' },
+		{ code: '{{product_name}}', label: 'Produktname', description: 'Name des Produkts' },
+	];
+
 	beforeEach(() => {
 		jest.clearAllMocks();
+		mockedUsePlaceholders.mockReturnValue({
+			placeholders: mockPlaceholders,
+			isLoading: false,
+		});
 	});
 
 	it('should render placeholder list', () => {
@@ -46,5 +64,16 @@ describe('PlaceholderHelp', () => {
 		fireEvent.click(codeElement);
 
 		expect(onCopy).toHaveBeenCalledWith('{{order_number}}');
+	});
+
+	it('should render loading state', () => {
+		mockedUsePlaceholders.mockReturnValue({
+			placeholders: [],
+			isLoading: true,
+		});
+
+		render(<PlaceholderHelp />);
+
+		expect(screen.getByText('Lade Platzhalter...')).toBeInTheDocument();
 	});
 });

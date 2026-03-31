@@ -694,15 +694,25 @@ class Bs_Custom_Mail_Voucher {
 			return false;
 		}
 
-		$pdf_path = get_attached_file( $template->attachment_id );
-		if ( ! $pdf_path || ! file_exists( $pdf_path ) ) {
-			return false;
+		// Get template path if using image background
+		$pdf_path = '';
+		if ( isset( $template->background_type ) && $template->background_type === 'image' && $template->attachment_id ) {
+			$pdf_path = get_attached_file( $template->attachment_id );
 		}
 
 		// Load PDF generator
 		if ( ! class_exists( 'Bs_Custom_Mail_PDF_Generator' ) ) {
 			require_once plugin_dir_path( __FILE__ ) . 'class-bs-custom-mail-pdf-generator.php';
 		}
+
+		// Prepare options with all template settings
+		$options = array(
+			'paper_size'       => isset( $template->paper_size ) ? $template->paper_size : 'A4',
+			'orientation'      => isset( $template->orientation ) ? $template->orientation : 'portrait',
+			'background_color' => isset( $template->background_color ) ? $template->background_color : '#ffffff',
+			'background_type'  => isset( $template->background_type ) ? $template->background_type : 'color',
+			'active_fields'    => isset( $template->active_fields ) ? $template->active_fields : array( 'wert', 'code', 'name', 'expiry' ),
+		);
 
 		$generator = new Bs_Custom_Mail_PDF_Generator();
 		return $generator->generate( $pdf_path, $template->template_config, array(
@@ -711,7 +721,7 @@ class Bs_Custom_Mail_Voucher {
 			'name' => $recipient_name,
 			'expiry' => date_i18n( get_option( 'date_format' ), strtotime( $expiry_date ) ),
 			'font_size' => $template->font_size
-		) );
+		), $options );
 	}
 
 	/**

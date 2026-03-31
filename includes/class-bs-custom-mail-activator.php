@@ -121,9 +121,14 @@ class Bs_Custom_Mail_Activator {
 			id bigint(20) NOT NULL AUTO_INCREMENT,
 			template_name varchar(100) NOT NULL,
 			template_key varchar(50) NOT NULL,
-			attachment_id bigint(20) NOT NULL,
+			attachment_id bigint(20) NOT NULL DEFAULT 0,
 			template_config longtext,
 			font_size int(11) DEFAULT 16,
+			paper_size varchar(10) DEFAULT 'A4',
+			orientation varchar(20) DEFAULT 'portrait',
+			background_color varchar(7) DEFAULT '#ffffff',
+			background_type varchar(20) DEFAULT 'color',
+			active_fields longtext,
 			is_active tinyint(1) DEFAULT 1,
 			created_at datetime DEFAULT CURRENT_TIMESTAMP,
 			updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -160,6 +165,36 @@ class Bs_Custom_Mail_Activator {
 		require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
 		dbDelta( $sql_pdf_templates );
 		dbDelta( $sql_vouchers );
+
+		// Upgrade: Add new columns to existing tables
+		self::maybe_upgrade_pdf_templates_table();
+	}
+
+	/**
+	 * Upgrade PDF templates table with new columns.
+	 *
+	 * @since    2.1.0
+	 */
+	private static function maybe_upgrade_pdf_templates_table() {
+		global $wpdb;
+		$table_name = $wpdb->prefix . 'bs_custom_mail_pdf_templates';
+
+		$columns_to_add = array(
+			'paper_size' => "ALTER TABLE $table_name ADD COLUMN paper_size varchar(10) DEFAULT 'A4'",
+			'orientation' => "ALTER TABLE $table_name ADD COLUMN orientation varchar(20) DEFAULT 'portrait'",
+			'background_color' => "ALTER TABLE $table_name ADD COLUMN background_color varchar(7) DEFAULT '#ffffff'",
+			'background_type' => "ALTER TABLE $table_name ADD COLUMN background_type varchar(20) DEFAULT 'color'",
+			'active_fields' => "ALTER TABLE $table_name ADD COLUMN active_fields longtext",
+		);
+
+		foreach ( $columns_to_add as $column => $sql ) {
+			$column_exists = $wpdb->get_results(
+				$wpdb->prepare( "SHOW COLUMNS FROM $table_name LIKE %s", $column )
+			);
+			if ( empty( $column_exists ) ) {
+				$wpdb->query( $sql );
+			}
+		}
 	}
 
 	/**

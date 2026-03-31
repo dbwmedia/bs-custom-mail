@@ -3,11 +3,14 @@
  */
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { Settings } from '../../../src/admin/views/Settings';
-import apiFetch from '@wordpress/api-fetch';
+import { useSettings } from '../../../src/admin/hooks';
 
-jest.mock('@wordpress/api-fetch');
+// Mock the hooks
+jest.mock('../../../src/admin/hooks', () => ({
+	useSettings: jest.fn(),
+}));
 
-const mockedApiFetch = apiFetch as jest.MockedFunction<typeof apiFetch>;
+const mockedUseSettings = useSettings as jest.MockedFunction<typeof useSettings>;
 
 describe('Settings', () => {
 	const mockSettings = {
@@ -18,30 +21,47 @@ describe('Settings', () => {
 
 	beforeEach(() => {
 		jest.clearAllMocks();
-		mockedApiFetch.mockResolvedValue(mockSettings);
 	});
 
 	it('should render loading state initially', () => {
+		mockedUseSettings.mockReturnValue({
+			settings: null,
+			isLoading: true,
+			updateSettings: jest.fn(),
+			error: null,
+		});
+
 		render(<Settings />);
 		expect(screen.getByText('Lade Einstellungen...')).toBeInTheDocument();
 	});
 
 	it('should render settings after loading', async () => {
+		mockedUseSettings.mockReturnValue({
+			settings: mockSettings,
+			isLoading: false,
+			updateSettings: jest.fn(),
+			error: null,
+		});
+
 		render(<Settings />);
 
 		await waitFor(() => {
 			expect(screen.getByText('Einstellungen')).toBeInTheDocument();
 		});
 
-		// Check for inputs by their values since labels are not properly associated in mocks
+		// Check for inputs by their values
 		expect(screen.getByDisplayValue('Bootsschule')).toBeInTheDocument();
 		expect(screen.getByDisplayValue('info@bootsschule.de')).toBeInTheDocument();
 	});
 
 	it('should save settings', async () => {
-		mockedApiFetch
-			.mockResolvedValueOnce(mockSettings)
-			.mockResolvedValueOnce({ ...mockSettings, from_name: 'New Name' });
+		const mockUpdateSettings = jest.fn().mockResolvedValue(undefined);
+		mockedUseSettings.mockReturnValue({
+			settings: mockSettings,
+			isLoading: false,
+			updateSettings: mockUpdateSettings,
+			error: null,
+		});
 
 		render(<Settings />);
 
@@ -49,24 +69,21 @@ describe('Settings', () => {
 			expect(screen.getByDisplayValue('Bootsschule')).toBeInTheDocument();
 		});
 
-		const nameInput = screen.getAllByDisplayValue('Bootsschule')[0];
+		const nameInput = screen.getByDisplayValue('Bootsschule');
 		fireEvent.change(nameInput, { target: { value: 'New Name' } });
 
 		const saveButton = screen.getByText('Einstellungen speichern');
 		fireEvent.click(saveButton);
 
 		await waitFor(() => {
-			// Component sends all settings, not just changed ones
-			expect(apiFetch).toHaveBeenCalledWith(
-				expect.objectContaining({
-					path: '/bs-custom-mail/v1/settings',
-					method: 'PUT',
-					data: expect.objectContaining({ from_name: 'New Name' }),
-				})
+			expect(mockUpdateSettings).toHaveBeenCalledWith(
+				expect.objectContaining({ from_name: 'New Name' })
 			);
 		});
 
 		// Check for success message
-		expect(screen.getByText('Einstellungen gespeichert.')).toBeInTheDocument();
+		await waitFor(() => {
+			expect(screen.getByText('Einstellungen gespeichert.')).toBeInTheDocument();
+		});
 	});
 });

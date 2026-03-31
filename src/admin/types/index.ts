@@ -100,6 +100,11 @@ export interface PDFTemplate {
 	attachment_url?: string;
 	template_config: PDFTemplateConfig | string;
 	font_size?: number;
+	paper_size?: 'A4' | 'A5' | 'A6';
+	orientation?: 'portrait' | 'landscape';
+	background_color?: string;
+	background_type?: 'color' | 'image';
+	active_fields?: string[] | string;
 	is_active?: boolean;
 	created_at?: string;
 	updated_at?: string;
@@ -109,6 +114,7 @@ export interface Position {
 	x: number;
 	y: number;
 	fontSize?: number;
+	visible?: boolean;
 }
 
 export interface PDFTemplateConfig {
@@ -116,4 +122,14 @@ export interface PDFTemplateConfig {
 	code: Position;
 	name: Position;
 	expiry: Position;
+	adressant?: Position;
+	notiz?: Position;
+}
+
+export interface PDFFieldDefinition {
+	key: string;
+	label: string;
+	color: string;
+	defaultPosition: Position;
+	optional?: boolean;
 }
