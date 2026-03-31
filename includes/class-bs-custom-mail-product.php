@@ -92,106 +92,460 @@ class Bs_Custom_Mail_Product {
 
 		?>
 		<div id="bs_custom_mail_product_data" class="panel woocommerce_options_panel">
-			<div class="options_group">
-				<h3><?php esc_html_e( 'Automatische E-Mail Konfiguration', 'bs-custom-mail' ); ?></h3>
-				<p class="form-field">
-					<?php
-					woocommerce_wp_checkbox( array(
-						'id'          => '_bs_custom_mail_send_custom',
-						'label'       => __( 'Automatische E-Mail senden', 'bs-custom-mail' ),
-						'description' => __( 'Aktivieren Sie diese Option, um beim Kauf dieses Produkts automatisch eine E-Mail zu versenden.', 'bs-custom-mail' ),
-						'value'       => $send_custom_email,
-					) );
-					?>
-				</p>
-			</div>
-
-			<div class="options_group">
-				<h3><?php esc_html_e( 'Template Auswahl', 'bs-custom-mail' ); ?></h3>
-				<p class="form-field">
-					<label for="_bs_custom_mail_template"><?php esc_html_e( 'E-Mail Template', 'bs-custom-mail' ); ?></label>
-					<select name="_bs_custom_mail_template" id="_bs_custom_mail_template" style="width: 100%; max-width: 400px;">
-						<option value=""><?php esc_html_e( '-- Kein Template --', 'bs-custom-mail' ); ?></option>
-						<?php foreach ( $templates as $key => $name ) : ?>
-							<option value="<?php echo esc_attr( $key ); ?>" <?php selected( $saved_template, $key ); ?>>
-								<?php echo esc_html( $name ); ?>
-							</option>
-						<?php endforeach; ?>
-					</select>
-					<span class="description">
-						<?php esc_html_e( 'Wählen Sie das E-Mail-Template, das für dieses Produkt verwendet werden soll.', 'bs-custom-mail' ); ?>
-					</span>
-				</p>
-			</div>
-
-			<div class="options_group">
-				<h3><?php esc_html_e( 'Zusätzliche Empfänger', 'bs-custom-mail' ); ?></h3>
-				<p class="form-field">
-					<label for="_bs_custom_mail_custom_recipients"><?php esc_html_e( 'Zusätzliche E-Mail-Adressen', 'bs-custom-mail' ); ?></label>
-					<input type="text" 
-						name="_bs_custom_mail_custom_recipients" 
-						id="_bs_custom_mail_custom_recipients" 
-						value="<?php echo esc_attr( $custom_recipients ); ?>" 
-						style="width: 100%; max-width: 400px;"
-						placeholder="z.B. info@bootsschule.de, admin@bootsschule.de">
-					<span class="description">
-						<?php esc_html_e( 'Optional: Weitere E-Mail-Adressen, die eine Kopie erhalten sollen (durch Komma getrennt).', 'bs-custom-mail' ); ?>
-					</span>
-				</p>
-			</div>
-
-			<div class="options_group">
-				<h3><?php esc_html_e( 'E-Mail Anhänge', 'bs-custom-mail' ); ?></h3>
-				<p class="form-field">
-					<label><?php esc_html_e( 'Dokumente anhängen', 'bs-custom-mail' ); ?></label>
-					<button type="button" class="button" id="bs_add_attachments">
-						<?php esc_html_e( 'Dateien auswählen', 'bs-custom-mail' ); ?>
-					</button>
-					<span class="description">
-						<?php esc_html_e( 'Wählen Sie PDFs oder andere Dokumente aus der Mediathek, die an die E-Mail angehängt werden.', 'bs-custom-mail' ); ?>
-					</span>
-				</p>
-				<div id="bs_attachments_list" style="margin: 10px 12px;">
-					<?php foreach ( $attachment_ids as $attachment_id ) : 
-						$attachment = get_post( $attachment_id );
-						if ( $attachment ) :
-							$icon = wp_mime_type_icon( $attachment_id );
-					?>
-						<div class="bs-attachment-item" data-id="<?php echo esc_attr( $attachment_id ); ?>" style="display: flex; align-items: center; padding: 8px; background: #f9f9f9; border: 1px solid #ddd; margin-bottom: 5px; border-radius: 3px;">
-							<img src="<?php echo esc_url( $icon ); ?>" alt="" style="width: 32px; height: 32px; margin-right: 10px;">
-							<span style="flex: 1;"><?php echo esc_html( basename( get_attached_file( $attachment_id ) ) ); ?></span>
-							<button type="button" class="button button-small bs-remove-attachment" style="color: #a00;">
-								<?php esc_html_e( 'Entfernen', 'bs-custom-mail' ); ?>
-							</button>
-							<input type="hidden" name="_bs_custom_mail_attachments[]" value="<?php echo esc_attr( $attachment_id ); ?>">
-						</div>
-						<?php endif; endforeach; ?>
+			<!-- Header -->
+			<div class="bs-mail-panel-header">
+				<div class="bs-mail-panel-icon">✉️</div>
+				<div class="bs-mail-panel-title">
+					<h3><?php esc_html_e( 'Automatische E-Mail Konfiguration', 'bs-custom-mail' ); ?></h3>
+					<p><?php esc_html_e( 'Konfigurieren Sie die automatische E-Mail für dieses Produkt.', 'bs-custom-mail' ); ?></p>
 				</div>
 			</div>
 
-			<div class="options_group">
-				<h3><?php esc_html_e( 'Vorschau & Test', 'bs-custom-mail' ); ?></h3>
-				<p class="form-field">
-					<button type="button" class="button" id="bs_preview_template" data-product-id="<?php echo esc_attr( $post->ID ); ?>">
+			<!-- Activation Card -->
+			<div class="bs-mail-card">
+				<div class="bs-mail-card-header">
+					<span class="bs-mail-card-icon">⚡</span>
+					<h4><?php esc_html_e( 'E-Mail Aktivierung', 'bs-custom-mail' ); ?></h4>
+				</div>
+				<div class="bs-mail-card-body">
+					<label class="bs-mail-toggle">
+						<input type="checkbox" name="_bs_custom_mail_send_custom" id="_bs_custom_mail_send_custom" value="yes" <?php checked( $send_custom_email, 'yes' ); ?>>
+						<span class="bs-mail-toggle-slider"></span>
+						<span class="bs-mail-toggle-label"><?php esc_html_e( 'Automatische E-Mail beim Kauf senden', 'bs-custom-mail' ); ?></span>
+					</label>
+					<p class="bs-mail-hint"><?php esc_html_e( 'Wenn aktiviert, wird beim Kauf dieses Produkts automatisch eine personalisierte E-Mail versendet.', 'bs-custom-mail' ); ?></p>
+				</div>
+			</div>
+
+			<!-- Template Card -->
+			<div class="bs-mail-card">
+				<div class="bs-mail-card-header">
+					<span class="bs-mail-card-icon">📝</span>
+					<h4><?php esc_html_e( 'Template Auswahl', 'bs-custom-mail' ); ?></h4>
+				</div>
+				<div class="bs-mail-card-body">
+					<div class="bs-mail-field">
+						<label for="_bs_custom_mail_template"><?php esc_html_e( 'E-Mail Template', 'bs-custom-mail' ); ?></label>
+						<div class="bs-mail-select-wrap">
+							<select name="_bs_custom_mail_template" id="_bs_custom_mail_template">
+								<option value=""><?php esc_html_e( 'Kein Template ausgewählt', 'bs-custom-mail' ); ?></option>
+								<?php foreach ( $templates as $key => $name ) : ?>
+									<option value="<?php echo esc_attr( $key ); ?>" <?php selected( $saved_template, $key ); ?>>
+										<?php echo esc_html( $name ); ?>
+									</option>
+								<?php endforeach; ?>
+							</select>
+						</div>
+						<p class="bs-mail-hint"><?php esc_html_e( 'Wählen Sie das E-Mail-Template, das für dieses Produkt verwendet werden soll.', 'bs-custom-mail' ); ?></p>
+					</div>
+				</div>
+			</div>
+
+			<!-- Recipients Card -->
+			<div class="bs-mail-card">
+				<div class="bs-mail-card-header">
+					<span class="bs-mail-card-icon">👥</span>
+					<h4><?php esc_html_e( 'Zusätzliche Empfänger (CC)', 'bs-custom-mail' ); ?></h4>
+				</div>
+				<div class="bs-mail-card-body">
+					<div class="bs-mail-field">
+						<label for="_bs_custom_mail_custom_recipients"><?php esc_html_e( 'E-Mail-Adressen für CC', 'bs-custom-mail' ); ?></label>
+						<input type="text" 
+							class="bs-mail-input"
+							name="_bs_custom_mail_custom_recipients" 
+							id="_bs_custom_mail_custom_recipients" 
+							value="<?php echo esc_attr( $custom_recipients ); ?>" 
+							placeholder="info@bootsschule.de, admin@bootsschule.de">
+						<p class="bs-mail-hint"><?php esc_html_e( 'Mehrere Adressen mit Komma trennen. Diese erhalten eine Kopie der E-Mail.', 'bs-custom-mail' ); ?></p>
+					</div>
+				</div>
+			</div>
+
+			<!-- Attachments Card -->
+			<div class="bs-mail-card">
+				<div class="bs-mail-card-header">
+					<span class="bs-mail-card-icon">📎</span>
+					<h4><?php esc_html_e( 'E-Mail Anhänge', 'bs-custom-mail' ); ?></h4>
+				</div>
+				<div class="bs-mail-card-body">
+					<div class="bs-mail-attachments-section">
+						<button type="button" class="bs-mail-btn bs-mail-btn-secondary" id="bs_add_attachments">
+							<span class="bs-mail-btn-icon">+</span>
+							<?php esc_html_e( 'Dateien auswählen', 'bs-custom-mail' ); ?>
+						</button>
+						<p class="bs-mail-hint"><?php esc_html_e( 'PDFs oder Dokumente aus der Mediathek an die E-Mail anhängen.', 'bs-custom-mail' ); ?></p>
+					</div>
+					
+					<div id="bs_attachments_list" class="bs-mail-attachments-list">
+						<?php foreach ( $attachment_ids as $attachment_id ) : 
+							$attachment = get_post( $attachment_id );
+							if ( $attachment ) :
+								$icon = wp_mime_type_icon( $attachment_id );
+								$file_url = get_attached_file( $attachment_id );
+								$file_name = $file_url ? basename( $file_url ) : 'Datei';
+						?>
+							<div class="bs-mail-attachment-item" data-id="<?php echo esc_attr( $attachment_id ); ?>">
+								<div class="bs-mail-attachment-icon">
+									<img src="<?php echo esc_url( $icon ); ?>" alt="">
+								</div>
+								<div class="bs-mail-attachment-info">
+									<span class="bs-mail-attachment-name"><?php echo esc_html( $file_name ); ?></span>
+								</div>
+								<button type="button" class="bs-mail-attachment-remove bs-remove-attachment" title="<?php esc_attr_e( 'Entfernen', 'bs-custom-mail' ); ?>">
+									×
+								</button>
+								<input type="hidden" name="_bs_custom_mail_attachments[]" value="<?php echo esc_attr( $attachment_id ); ?>">
+							</div>
+							<?php endif; endforeach; ?>
+					</div>
+				</div>
+			</div>
+
+			<!-- Preview Card -->
+			<div class="bs-mail-card bs-mail-card-preview">
+				<div class="bs-mail-card-header">
+					<span class="bs-mail-card-icon">👁️</span>
+					<h4><?php esc_html_e( 'Vorschau & Test', 'bs-custom-mail' ); ?></h4>
+				</div>
+				<div class="bs-mail-card-body">
+					<button type="button" class="bs-mail-btn bs-mail-btn-primary" id="bs_preview_template" data-product-id="<?php echo esc_attr( $post->ID ); ?>">
+						<span class="bs-mail-btn-icon">👁️</span>
 						<?php esc_html_e( 'Template Vorschau', 'bs-custom-mail' ); ?>
 					</button>
-					<span class="description" style="margin-left: 10px;">
-						<?php esc_html_e( 'Vorschau des ausgewählten Templates anzeigen.', 'bs-custom-mail' ); ?>
-					</span>
-				</p>
+					<p class="bs-mail-hint"><?php esc_html_e( 'Vorschau des E-Mail-Templates mit Beispieldaten anzeigen.', 'bs-custom-mail' ); ?></p>
+				</div>
 			</div>
 
 			<style>
-				#bs_custom_mail_product_data h3 {
-					padding: 10px 12px;
-					margin: 0;
-					background: #f1f1f1;
-					border-bottom: 1px solid #ddd;
-					font-size: 14px;
+				/* Panel Container - Clean gray background */
+				#bs_custom_mail_product_data {
+					background: #f0f0f1;
+					padding: 16px;
 				}
+
+				/* COMPLETELY hide all WooCommerce default labels and form field structures */
+				#bs_custom_mail_product_data .form-field,
+				#bs_custom_mail_product_data p.form-field {
+					padding: 0 !important;
+					margin: 0 !important;
+					float: none !important;
+					clear: none !important;
+					width: auto !important;
+				}
+				#bs_custom_mail_product_data .form-field > label,
+				#bs_custom_mail_product_data p.form-field > label {
+					display: none !important;
+					visibility: hidden !important;
+					opacity: 0 !important;
+					position: absolute !important;
+					left: -9999px !important;
+					float: none !important;
+					width: 0 !important;
+					margin: 0 !important;
+					padding: 0 !important;
+					height: 0 !important;
+					overflow: hidden !important;
+				}
+				#bs_custom_mail_product_data .form-field input,
+				#bs_custom_mail_product_data .form-field select,
+				#bs_custom_mail_product_data .form-field textarea {
+					float: none !important;
+					width: auto !important;
+					margin: 0 !important;
+				}
+
+				/* Header - Simple white card */
+				.bs-mail-panel-header {
+					display: flex;
+					align-items: center;
+					gap: 12px;
+					margin-bottom: 16px;
+					padding: 16px 20px;
+					background: #fff;
+					border: 1px solid #c3c4c7;
+					border-radius: 4px;
+				}
+				.bs-mail-panel-icon {
+					font-size: 24px;
+					line-height: 1;
+				}
+				.bs-mail-panel-title h3 {
+					margin: 0 0 2px 0;
+					font-size: 14px;
+					font-weight: 600;
+					color: #1d2327;
+				}
+				.bs-mail-panel-title p {
+					margin: 0;
+					font-size: 12px;
+					color: #646970;
+				}
+
+				/* Cards - Simple white with subtle border */
+				.bs-mail-card {
+					background: #fff;
+					border: 1px solid #c3c4c7;
+					border-radius: 4px;
+					margin-bottom: 12px;
+				}
+				.bs-mail-card:last-child {
+					margin-bottom: 0;
+				}
+				.bs-mail-card-header {
+					display: flex;
+					align-items: center;
+					gap: 8px;
+					padding: 12px 16px;
+					background: #f6f7f7;
+					border-bottom: 1px solid #c3c4c7;
+				}
+				.bs-mail-card-icon {
+					font-size: 16px;
+					line-height: 1;
+				}
+				.bs-mail-card-header h4 {
+					margin: 0;
+					font-size: 13px;
+					font-weight: 600;
+					color: #1d2327;
+				}
+				.bs-mail-card-body {
+					padding: 16px;
+				}
+
+				/* Toggle Switch - Gray scale only */
+				.bs-mail-toggle {
+					display: flex !important;
+					align-items: center;
+					gap: 12px;
+					cursor: pointer;
+					margin: 0 !important;
+					padding: 0 !important;
+					width: auto !important;
+					float: none !important;
+				}
+				.bs-mail-toggle input[type="checkbox"] {
+					display: none !important;
+				}
+				.bs-mail-toggle-slider {
+					position: relative;
+					width: 40px;
+					height: 22px;
+					background: #c3c4c7;
+					border-radius: 22px;
+					transition: background 0.2s ease;
+					flex-shrink: 0;
+					display: block !important;
+				}
+				.bs-mail-toggle-slider::after {
+					content: '';
+					position: absolute;
+					top: 2px;
+					left: 2px;
+					width: 18px;
+					height: 18px;
+					background: #fff;
+					border-radius: 50%;
+					box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+					transition: transform 0.2s ease;
+				}
+				.bs-mail-toggle input:checked + .bs-mail-toggle-slider {
+					background: #646970;
+				}
+				.bs-mail-toggle input:checked + .bs-mail-toggle-slider::after {
+					transform: translateX(18px);
+				}
+				.bs-mail-toggle-label {
+					font-size: 13px;
+					font-weight: 500;
+					color: #1d2327;
+					display: inline !important;
+					width: auto !important;
+					float: none !important;
+					margin: 0 !important;
+					padding: 0 !important;
+				}
+
+				/* Hint Text */
+				.bs-mail-hint {
+					margin: 8px 0 0 0;
+					font-size: 12px;
+					color: #646970;
+					line-height: 1.5;
+				}
+
+				/* Form Fields */
+				.bs-mail-field {
+					margin-bottom: 4px;
+				}
+				.bs-mail-field label {
+					display: block !important;
+					margin-bottom: 6px;
+					font-size: 12px;
+					font-weight: 500;
+					color: #1d2327;
+					float: none !important;
+					width: auto !important;
+				}
+				.bs-mail-input {
+					width: 100%;
+					max-width: 400px;
+					padding: 6px 8px;
+					font-size: 13px;
+					color: #1d2327;
+					background: #fff;
+					border: 1px solid #8c8f94;
+					border-radius: 4px;
+					box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+					transition: border-color 0.1s ease;
+					float: none !important;
+					margin: 0 !important;
+				}
+				.bs-mail-input:focus {
+					outline: none;
+					border-color: #646970;
+				}
+
+				/* Select */
+				.bs-mail-select-wrap {
+					position: relative;
+					max-width: 400px;
+				}
+				.bs-mail-select-wrap select {
+					width: 100%;
+					padding: 6px 32px 6px 8px;
+					font-size: 13px;
+					color: #1d2327;
+					background: #fff;
+					border: 1px solid #8c8f94;
+					border-radius: 4px;
+					appearance: none;
+					cursor: pointer;
+					box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+					float: none !important;
+					margin: 0 !important;
+				}
+				.bs-mail-select-wrap::after {
+					content: '';
+					position: absolute;
+					right: 10px;
+					top: 50%;
+					transform: translateY(-50%);
+					width: 0;
+					height: 0;
+					border-left: 4px solid transparent;
+					border-right: 4px solid transparent;
+					border-top: 5px solid #646970;
+					pointer-events: none;
+				}
+				.bs-mail-select-wrap select:focus {
+					outline: none;
+					border-color: #646970;
+				}
+
+				/* Buttons - WP Admin style */
+				.bs-mail-btn {
+					display: inline-flex;
+					align-items: center;
+					gap: 6px;
+					padding: 6px 12px;
+					font-size: 13px;
+					line-height: 1.4;
+					font-weight: 400;
+					border: 1px solid #2271b1;
+					border-radius: 3px;
+					cursor: pointer;
+					transition: all 0.1s ease;
+				}
+				.bs-mail-btn-primary {
+					background: #2271b1;
+					color: #fff;
+				}
+				.bs-mail-btn-primary:hover {
+					background: #135e96;
+					border-color: #135e96;
+				}
+				.bs-mail-btn-secondary {
+					background: #f6f7f7;
+					color: #2271b1;
+				}
+				.bs-mail-btn-secondary:hover {
+					background: #f0f0f1;
+					border-color: #0a4b78;
+					color: #0a4b78;
+				}
+				.bs-mail-btn-icon {
+					font-size: 14px;
+					line-height: 1;
+				}
+
+				/* Attachments */
+				.bs-mail-attachments-section {
+					margin-bottom: 12px;
+				}
+				.bs-mail-attachments-list {
+					display: flex;
+					flex-direction: column;
+					gap: 6px;
+				}
+				.bs-mail-attachment-item {
+					display: flex;
+					align-items: center;
+					gap: 10px;
+					padding: 10px 12px;
+					background: #f6f7f7;
+					border: 1px solid #c3c4c7;
+					border-radius: 4px;
+				}
+				.bs-mail-attachment-icon img {
+					width: 20px;
+					height: 20px;
+					opacity: 0.6;
+				}
+				.bs-mail-attachment-info {
+					flex: 1;
+					min-width: 0;
+				}
+				.bs-mail-attachment-name {
+					font-size: 13px;
+					color: #1d2327;
+					word-break: break-word;
+				}
+				.bs-mail-attachment-remove {
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					width: 24px;
+					height: 24px;
+					font-size: 18px;
+					line-height: 1;
+					color: #646970;
+					background: transparent;
+					border: none;
+					border-radius: 3px;
+					cursor: pointer;
+				}
+				.bs-mail-attachment-remove:hover {
+					color: #d63638;
+					background: #fcf0f1;
+				}
+
+				/* Preview Card */
+				.bs-mail-card-preview .bs-mail-card-body {
+					display: flex;
+					align-items: center;
+					gap: 12px;
+					flex-wrap: wrap;
+				}
+				.bs-mail-card-preview .bs-mail-hint {
+					margin: 0;
+				}
+
+				/* WooCommerce Overrides - ensure clean layout */
 				#bs_custom_mail_product_data .options_group {
-					border-bottom: 1px solid #eee;
-					padding-bottom: 10px;
+					border: none !important;
+					padding: 0 !important;
+					margin: 0 !important;
 				}
 			</style>
 		</div>
