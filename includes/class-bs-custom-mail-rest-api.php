@@ -474,6 +474,10 @@ class Bs_Custom_Mail_REST_API {
 	 */
 	private function get_template_update_args() {
 		return array(
+			'template_name' => array(
+				'type'              => 'string',
+				'sanitize_callback' => 'sanitize_text_field',
+			),
 			'subject'     => array(
 				'type'              => 'string',
 				'sanitize_callback' => 'sanitize_text_field',
@@ -677,6 +681,11 @@ class Bs_Custom_Mail_REST_API {
 
 		$update_data   = array();
 		$update_format = array();
+
+		if ( $request->has_param( 'template_name' ) ) {
+			$update_data['template_name'] = $request->get_param( 'template_name' );
+			$update_format[]              = '%s';
+		}
 
 		if ( $request->has_param( 'subject' ) ) {
 			$update_data['subject'] = $request->get_param( 'subject' );

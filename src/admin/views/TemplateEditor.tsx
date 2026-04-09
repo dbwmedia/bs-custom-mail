@@ -104,8 +104,11 @@ export function TemplateEditor( { mode, templateKey, onNavigate }: TemplateEdito
 				onNavigate( 'list' );
 			} else if ( templateKey ) {
 				await updateTemplate( templateKey, {
+					template_name: template.template_name,
 					subject: template.subject,
+					header_text: template.header_text,
 					content: template.content,
+					footer_text: template.footer_text,
 					is_active: template.is_active,
 				} );
 				success( __( 'Template erfolgreich gespeichert.', 'bs-custom-mail' ) );
@@ -227,12 +230,12 @@ export function TemplateEditor( { mode, templateKey, onNavigate }: TemplateEdito
 						</Card>
 					) }
 
-					{ mode === 'create' && (
-						<Card className="bs-card-warning">
-							<CardHeader>
-								<h3>{ __( 'Template Details', 'bs-custom-mail' ) }</h3>
-							</CardHeader>
-							<CardBody>
+					<Card className={ mode === 'create' ? 'bs-card-warning' : '' }>
+						<CardHeader>
+							<h3>{ __( 'Template Details', 'bs-custom-mail' ) }</h3>
+						</CardHeader>
+						<CardBody>
+							{ mode === 'create' && (
 								<TextControl
 									label={ __( 'Template Key *', 'bs-custom-mail' ) }
 									help={ __(
@@ -245,18 +248,18 @@ export function TemplateEditor( { mode, templateKey, onNavigate }: TemplateEdito
 									}
 									required
 								/>
-								<TextControl
-									label={ __( 'Template Name *', 'bs-custom-mail' ) }
-									help={ __( 'Anzeigename im Admin', 'bs-custom-mail' ) }
-									value={ template.template_name }
-									onChange={ ( template_name ) =>
-										setTemplate( { ...template, template_name } )
-									}
-									required
-								/>
-							</CardBody>
-						</Card>
-					) }
+							) }
+							<TextControl
+								label={ __( 'Template Name *', 'bs-custom-mail' ) }
+								help={ __( 'Anzeigename im Admin', 'bs-custom-mail' ) }
+								value={ template.template_name }
+								onChange={ ( template_name ) =>
+									setTemplate( { ...template, template_name } )
+								}
+								required
+							/>
+						</CardBody>
+					</Card>
 
 					<Card>
 						<CardHeader>
