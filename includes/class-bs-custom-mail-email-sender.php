@@ -744,4 +744,114 @@ class Bs_Custom_Mail_Email_Sender {
 		return $attachments;
 	}
 
+	/**
+	 * Send voucher email.
+	 *
+	 * @since    2.0.0
+	 * @param    string      $to             Recipient email.
+	 * @param    array       $voucher_data   Voucher data.
+	 * @param    WC_Order    $order          Order object.
+	 * @return   bool
+	 */
+	public function send_voucher_email( $to, $voucher_data, $order ) {
+		$subject = __( 'Ihr Wertgutschein - Bootsschule Berlin Köpenick', 'bs-custom-mail' );
+		
+		$gutschein_code = isset( $voucher_data['gutschein_code'] ) ? $voucher_data['gutschein_code'] : '';
+		$gutschein_wert = isset( $voucher_data['gutschein_wert'] ) ? $voucher_data['gutschein_wert'] : '';
+		$gutschein_ablauf = isset( $voucher_data['gutschein_ablauf'] ) ? $voucher_data['gutschein_ablauf'] : '';
+		$empfaenger_name = isset( $voucher_data['empfaenger_name'] ) ? $voucher_data['empfaenger_name'] : '';
+		$persoenliche_nachricht = isset( $voucher_data['persoenliche_nachricht'] ) ? $voucher_data['persoenliche_nachricht'] : '';
+		$pdf_url = isset( $voucher_data['pdf_url'] ) ? $voucher_data['pdf_url'] : '';
+
+		// Build email body
+		$body = '<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>' . esc_html( $subject ) . '</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+	<table role="presentation" style="width: 100%; border-collapse: collapse;">
+		<tr>
+			<td style="padding: 0;">
+				<table role="presentation" style="width: 600px; margin: 0 auto; border-collapse: collapse; border: 1px solid #ddd;">
+					<tr>
+						<td style="background: #000; color: #fff; padding: 30px; text-align: center;">
+							<h1 style="margin: 0; font-size: 24px;">🎁 ' . esc_html__( 'Ihr Wertgutschein', 'bs-custom-mail' ) . '</h1>
+						</td>
+					</tr>
+					<tr>
+						<td style="padding: 30px;">
+							<h2 style="margin-top: 0;">' . sprintf( esc_html__( 'Hallo %s,', 'bs-custom-mail' ), esc_html( $empfaenger_name ) ) . '</h2>
+							<p>' . esc_html__( 'Sie haben einen Wertgutschein für die Bootsschule Berlin Köpenick erhalten!', 'bs-custom-mail' ) . '</p>
+							
+							<div style="background: #f9fafb; border: 2px solid #000; border-radius: 12px; padding: 24px; text-align: center; margin: 24px 0;">
+								<div style="font-size: 14px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">' . esc_html__( 'Gutscheinwert', 'bs-custom-mail' ) . '</div>
+								<div style="font-size: 36px; font-weight: 800; color: #000; line-height: 1;">' . esc_html( $gutschein_wert ) . '</div>
+								<div style="margin-top: 16px; padding-top: 16px; border-top: 1px dashed #e5e7eb;">
+									<div style="font-size: 13px; color: #6b7280; margin-bottom: 4px;">' . esc_html__( 'Gutscheincode', 'bs-custom-mail' ) . '</div>
+									<code style="font-size: 20px; font-weight: 700; color: #000; background: #fff; padding: 8px 16px; border-radius: 6px; display: inline-block;">' . esc_html( strtoupper( $gutschein_code ) ) . '</code>
+								</div>
+							</div>';
+
+		// Add personal message if present
+		if ( ! empty( $persoenliche_nachricht ) ) {
+			$body .= '
+							<div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 24px 0;">
+								<div style="font-size: 13px; color: #6b7280; margin-bottom: 8px;">' . esc_html__( 'Persönliche Nachricht', 'bs-custom-mail' ) . '</div>
+								<div style="font-style: italic; color: #374151;">' . nl2br( esc_html( $persoenliche_nachricht ) ) . '</div>
+							</div>';
+		}
+
+		$body .= '
+							<p style="font-size: 13px; color: #6b7280; margin-top: 24px;">
+								<strong>' . esc_html__( 'Gültig bis:', 'bs-custom-mail' ) . '</strong> ' . esc_html( $gutschein_ablauf ) . '<br>
+								' . esc_html__( 'Der Gutschein kann für alle Kurse und Produkte in unserem Shop eingelöst werden.', 'bs-custom-mail' ) . '
+							</p>
+						</td>
+					</tr>
+					<tr>
+						<td style="background: #f9fafb; padding: 20px; text-align: center; border-top: 1px solid #e5e7eb;">
+							<p style="margin: 0; font-size: 13px; color: #6b7280;">
+								<strong>Bootsschule Berlin Köpenick</strong><br>
+								Grünauer Str. 3, 12557 Berlin<br>
+								Tel: 0163/6298589
+							</p>
+						</td>
+					</tr>
+				</table>
+			</td>
+		</tr>
+	</table>
+</body>
+</html>';
+
+		// Set headers
+		$from_name = get_option( 'bs_custom_mail_from_name', get_bloginfo( 'name' ) );
+		$from_email = get_option( 'bs_custom_mail_from_email', get_option( 'admin_email' ) );
+
+		$headers = array(
+			'Content-Type: text/html; charset=UTF-8',
+			'From: ' . $from_name . ' <' . $from_email . '>',
+		);
+
+		// Prepare attachments - get PDF path from URL
+		$attachments = array();
+		if ( ! empty( $pdf_url ) ) {
+			$wp_upload = wp_upload_dir();
+			$upload_dir = $wp_upload['basedir'] . '/bs-vouchers/';
+			$upload_url = $wp_upload['baseurl'] . '/bs-vouchers/';
+			$pdf_path = str_replace( $upload_url, $upload_dir, $pdf_url );
+			if ( file_exists( $pdf_path ) ) {
+				$attachments[] = $pdf_path;
+			}
+		}
+
+		// Send email
+		$sent = wp_mail( $to, $subject, $body, $headers, $attachments );
+
+		return $sent;
+	}
+
 }

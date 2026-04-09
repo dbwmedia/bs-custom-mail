@@ -84,7 +84,12 @@ class Bs_Custom_Mail_PDF_Generator {
 	public function generate( $template_path, $template_json, $data, $options = array() ) {
 		// Load FPDF
 		if ( ! class_exists( 'FPDF' ) ) {
-			$fpdf_path = plugin_dir_path( __FILE__ ) . '../vendor/fpdf/fpdf.php';
+			// Try composer path first
+			$fpdf_path = plugin_dir_path( __FILE__ ) . '../vendor/setasign/fpdf/fpdf.php';
+			if ( ! file_exists( $fpdf_path ) ) {
+				// Fallback to alternative path
+				$fpdf_path = plugin_dir_path( __FILE__ ) . '../vendor/fpdf/fpdf.php';
+			}
 			if ( ! file_exists( $fpdf_path ) ) {
 				return $this->generate_with_tcpdf( $template_path, $template_json, $data, $options );
 			}

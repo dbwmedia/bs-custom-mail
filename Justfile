@@ -87,10 +87,13 @@ clean:
 
 # Create distribution ZIP
 dist: clean test build
+    @echo "📦 Installing production dependencies..."
+    composer install --no-dev --optimize-autoloader --quiet
+    
     @echo "📦 Creating distribution package..."
     mkdir -p dist
     
-    # Create ZIP with only necessary files
+    # Create ZIP with only necessary files (including vendor for FPDF)
     zip -r "dist/bs-custom-mail-v$(cat package.json | grep '"version"' | cut -d'"' -f4).zip" \
         ./*.php \
         ./includes/ \
@@ -98,26 +101,33 @@ dist: clean test build
         ./public/ \
         ./languages/ \
         ./build/ \
+        ./vendor/ \
         ./uninstall.php \
         ./README.txt \
         ./LICENSE.txt \
+        ./composer.json \
+        ./composer.lock \
         -x "*/.*" \
         -x "*/tests/*" \
         -x "*/node_modules/*" \
-        -x "*/vendor/*" \
         -x "*/src/*" \
         -x "*.map" \
         -x "package*.json" \
-        -x "composer*.json" \
         -x "phpunit.xml" \
         -x "jest.config.js" \
         -x "tsconfig.json" \
         -x "*.md"
     
+    @echo "📦 Reinstalling dev dependencies..."
+    composer install --quiet
+    
     @echo "✅ Distribution package created in dist/"
 
 # Quick dist without tests
 dist-quick: clean build
+    @echo "📦 Installing production dependencies..."
+    composer install --no-dev --optimize-autoloader --quiet
+    
     @echo "📦 Creating distribution package (quick)..."
     mkdir -p dist
     
@@ -128,15 +138,20 @@ dist-quick: clean build
         ./public/ \
         ./languages/ \
         ./build/ \
+        ./vendor/ \
         ./uninstall.php \
         ./README.txt \
         ./LICENSE.txt \
+        ./composer.json \
+        ./composer.lock \
         -x "*/.*" \
         -x "*/tests/*" \
         -x "*/node_modules/*" \
-        -x "*/vendor/*" \
         -x "*/src/*" \
         -x "*.map"
+    
+    @echo "📦 Reinstalling dev dependencies..."
+    composer install --quiet
     
     @echo "✅ Distribution package created"
 

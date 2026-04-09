@@ -43,8 +43,9 @@ export function VoucherList( { onNavigate }: Props ) {
 		}
 		try {
 			await apiFetch( {
-				path: `bs-custom-mail/v1/vouchers/${ voucherId }/cancel`,
-				method: 'POST',
+				path: `bs-custom-mail/v1/vouchers/${ voucherId }`,
+				method: 'PUT',
+				data: { status: 'cancelled' },
 			} );
 			fetchData();
 		} catch ( error ) {
