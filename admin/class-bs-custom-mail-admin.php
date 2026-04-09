@@ -176,8 +176,8 @@ class Bs_Custom_Mail_Admin {
 	 */
 	public function add_admin_menu() {
 		add_menu_page(
-			__( 'Bootsschule Emails', 'bs-custom-mail' ),
-			__( 'Bootsschule Emails', 'bs-custom-mail' ),
+			__( 'Bootsschule Mail', 'bs-custom-mail' ),
+			__( 'Bootsschule Mail', 'bs-custom-mail' ),
 			'manage_options',
 			'bs-custom-mail',
 			array( $this, 'display_templates_page' ),
@@ -188,7 +188,7 @@ class Bs_Custom_Mail_Admin {
 		add_submenu_page(
 			'bs-custom-mail',
 			__( 'E-Mail Templates', 'bs-custom-mail' ),
-			__( 'Templates', 'bs-custom-mail' ),
+			__( '📧 E-Mail Templates', 'bs-custom-mail' ),
 			'manage_options',
 			'bs-custom-mail',
 			array( $this, 'display_templates_page' )
@@ -196,8 +196,26 @@ class Bs_Custom_Mail_Admin {
 
 		add_submenu_page(
 			'bs-custom-mail',
+			__( 'Gutscheine', 'bs-custom-mail' ),
+			__( '🎁 Gutscheine', 'bs-custom-mail' ),
+			'manage_options',
+			'bs-custom-mail-vouchers',
+			array( $this, 'display_react_app_page' )
+		);
+
+		add_submenu_page(
+			'bs-custom-mail',
+			__( 'Statistik', 'bs-custom-mail' ),
+			__( '📊 Statistik', 'bs-custom-mail' ),
+			'manage_options',
+			'bs-custom-mail-stats',
+			array( $this, 'display_stats_page' )
+		);
+
+		add_submenu_page(
+			'bs-custom-mail',
 			__( 'Einstellungen', 'bs-custom-mail' ),
-			__( 'Einstellungen', 'bs-custom-mail' ),
+			__( '⚙️ Einstellungen', 'bs-custom-mail' ),
 			'manage_options',
 			'bs-custom-mail-settings',
 			array( $this, 'display_settings_page' )
@@ -205,21 +223,11 @@ class Bs_Custom_Mail_Admin {
 
 		add_submenu_page(
 			'bs-custom-mail',
-			__( 'Statistik', 'bs-custom-mail' ),
-			__( 'Statistik', 'bs-custom-mail' ),
+			__( 'Hilfe & Anleitung', 'bs-custom-mail' ),
+			__( '❓ Hilfe', 'bs-custom-mail' ),
 			'manage_options',
-			'bs-custom-mail-stats',
-			array( $this, 'display_stats_page' )
-		);
-
-		// Voucher submenu pages (use same display function - React handles routing)
-		add_submenu_page(
-			'bs-custom-mail',
-			__( 'Gutscheine', 'bs-custom-mail' ),
-			__( '🎁 Gutscheine', 'bs-custom-mail' ),
-			'manage_options',
-			'bs-custom-mail-vouchers',
-			array( $this, 'display_react_app_page' )
+			'bs-custom-mail-help',
+			array( $this, 'display_help_page' )
 		);
 	}
 
@@ -322,6 +330,15 @@ class Bs_Custom_Mail_Admin {
 	public function display_react_app_page() {
 		// The React app will handle routing based on the page parameter
 		echo '<div id="bs-custom-mail-admin-app"></div>';
+	}
+
+	/**
+	 * Display help page.
+	 *
+	 * @since    2.0.0
+	 */
+	public function display_help_page() {
+		require_once plugin_dir_path( __FILE__ ) . 'partials/bs-custom-mail-admin-help.php';
 	}
 
 	/**
