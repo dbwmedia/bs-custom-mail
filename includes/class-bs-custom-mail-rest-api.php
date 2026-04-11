@@ -72,7 +72,7 @@ class Bs_Custom_Mail_REST_API {
 
 		register_rest_route(
 			$this->namespace,
-			'/templates/(?P<key>[a-z0-9_]+)',
+			'/templates/(?P<key>[a-zA-Z0-9_%\s-]+)',
 			array(
 				array(
 					'methods'             => WP_REST_Server::READABLE,
@@ -140,7 +140,7 @@ class Bs_Custom_Mail_REST_API {
 		// Test email endpoint
 		register_rest_route(
 			$this->namespace,
-			'/templates/(?P<key>[a-z0-9_]+)/test',
+			'/templates/(?P<key>[a-zA-Z0-9_%\s-]+)/test',
 			array(
 				array(
 					'methods'             => WP_REST_Server::CREATABLE,
@@ -431,7 +431,7 @@ class Bs_Custom_Mail_REST_API {
 				'type'              => 'string',
 				'sanitize_callback' => 'sanitize_text_field',
 				'validate_callback' => function( $param ) {
-					return preg_match( '/^[a-z0-9_]+$/', $param );
+					return preg_match( '/^[a-zA-Z0-9_\s-]+$/', $param );
 				},
 			),
 			'template_name' => array(

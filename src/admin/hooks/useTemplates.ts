@@ -54,7 +54,7 @@ export function useTemplates(): UseTemplatesReturn {
 
 	const updateTemplate = async ( key: string, data: Partial<Template> ): Promise<Template> => {
 		const response = await apiFetch<Template>( {
-			path: `/bs-custom-mail/v1/templates/${ key }`,
+			path: `/bs-custom-mail/v1/templates/${ encodeURIComponent( key ) }`,
 			method: 'PUT',
 			data,
 		} );
@@ -64,7 +64,7 @@ export function useTemplates(): UseTemplatesReturn {
 
 	const deleteTemplate = async ( key: string ): Promise<void> => {
 		await apiFetch( {
-			path: `/bs-custom-mail/v1/templates/${ key }`,
+			path: `/bs-custom-mail/v1/templates/${ encodeURIComponent( key ) }`,
 			method: 'DELETE',
 		} );
 		await fetchTemplates();
@@ -75,7 +75,7 @@ export function useTemplates(): UseTemplatesReturn {
 		email: string
 	): Promise<{ success: boolean; message: string }> => {
 		return apiFetch<{ success: boolean; message: string }>( {
-			path: `/bs-custom-mail/v1/templates/${ key }/test`,
+			path: `/bs-custom-mail/v1/templates/${ encodeURIComponent( key ) }/test`,
 			method: 'POST',
 			data: { email },
 		} );
