@@ -669,6 +669,37 @@
 	b, strong {
 		font-weight: 700;
 	}
+
+	i, em {
+		font-style: italic;
+	}
+
+	u {
+		text-decoration: underline;
+	}
+
+	s, strike {
+		text-decoration: line-through;
+	}
+
+	h2 {
+		font-size: 1.5em;
+		font-weight: 700;
+		margin: 1em 0 0.5em;
+		color: var(--bs-color-text);
+	}
+
+	h3 {
+		font-size: 1.25em;
+		font-weight: 600;
+		margin: 1em 0 0.5em;
+		color: var(--bs-color-text);
+	}
+
+	a {
+		color: #2271b1;
+		text-decoration: underline;
+	}
 }
 
 // Editor toolbar

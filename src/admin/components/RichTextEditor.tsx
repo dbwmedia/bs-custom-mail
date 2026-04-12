@@ -15,6 +15,7 @@ interface ToolbarButton {
 	command: string;
 	icon: string;
 	title: string;
+	arg?: string;
 	divider?: false;
 }
 
@@ -25,10 +26,14 @@ interface ToolbarDivider {
 type ToolbarItem = ToolbarButton | ToolbarDivider;
 
 const TOOLBAR_BUTTONS: ToolbarItem[] = [
-	{ command: 'bold', icon: 'B', title: __( 'Fett', 'bs-custom-mail' ) },
-	{ command: 'italic', icon: 'I', title: __( 'Kursiv', 'bs-custom-mail' ) },
-	{ command: 'underline', icon: 'U', title: __( 'Unterstrichen', 'bs-custom-mail' ) },
+	{ command: 'bold', icon: 'B', title: __( 'Fett (Ctrl+B)', 'bs-custom-mail' ) },
+	{ command: 'italic', icon: 'I', title: __( 'Kursiv (Ctrl+I)', 'bs-custom-mail' ) },
+	{ command: 'underline', icon: 'U', title: __( 'Unterstrichen (Ctrl+U)', 'bs-custom-mail' ) },
 	{ command: 'strikeThrough', icon: 'S', title: __( 'Durchgestrichen', 'bs-custom-mail' ) },
+	{ divider: true },
+	{ command: 'formatBlock', arg: 'H2', icon: 'H2', title: __( 'Überschrift 2', 'bs-custom-mail' ) },
+	{ command: 'formatBlock', arg: 'H3', icon: 'H3', title: __( 'Überschrift 3', 'bs-custom-mail' ) },
+	{ command: 'formatBlock', arg: 'P', icon: '¶', title: __( 'Normaler Text', 'bs-custom-mail' ) },
 	{ divider: true },
 	{ command: 'insertUnorderedList', icon: '•', title: __( 'Aufzählung', 'bs-custom-mail' ) },
 	{ command: 'insertOrderedList', icon: '1.', title: __( 'Nummerierung', 'bs-custom-mail' ) },
@@ -48,8 +53,8 @@ export function RichTextEditor( { value, onChange, placeholder }: RichTextEditor
 		}
 	}, [ onChange ] );
 
-	const execCommand = useCallback( ( command: string ) => {
-		document.execCommand( command, false );
+	const execCommand = useCallback( ( command: string, arg?: string ) => {
+		document.execCommand( command, false, arg );
 		handleInput();
 		
 		// Update active commands
@@ -79,10 +84,10 @@ export function RichTextEditor( { value, onChange, placeholder }: RichTextEditor
 						<span key={ index } className="bs-toolbar-divider" />
 					) : (
 						<button
-							key={ button.command }
+							key={ `${ button.command }-${ button.arg || '' }` }
 							title={ button.title }
 							className={ activeCommands.includes( button.command ) ? 'is-active' : '' }
-							onClick={ () => execCommand( button.command ) }
+							onClick={ () => execCommand( button.command, button.arg ) }
 							type="button"
 						>
 							{ button.icon }
