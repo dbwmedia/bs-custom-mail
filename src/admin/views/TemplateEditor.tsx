@@ -130,15 +130,23 @@ export function TemplateEditor( { mode, templateKey, onNavigate }: TemplateEdito
 			return;
 		}
 
+		// Im Create-Mode können wir keine Test-E-Mail senden, da das Template noch nicht existiert
+		if ( mode === 'create' ) {
+			error( __( 'Bitte speichern Sie das Template zuerst, bevor Sie eine Test-E-Mail senden.', 'bs-custom-mail' ) );
+			return;
+		}
+
+		if ( ! templateKey ) {
+			error( __( 'Template Key nicht gefunden.', 'bs-custom-mail' ) );
+			return;
+		}
+
 		setIsSendingTest( true );
 		try {
-			const result = await sendTestEmail(
-				mode === 'edit' ? templateKey! : template.template_key,
-				testEmail
-			);
+			const result = await sendTestEmail( templateKey, testEmail );
 			success( result.message );
 		} catch ( err ) {
-			error( __( 'Fehler beim Senden der Test-E-Mail.', 'bs-custom-mail' ) );
+			error( err instanceof Error ? err.message : __( 'Fehler beim Senden der Test-E-Mail.', 'bs-custom-mail' ) );
 		} finally {
 			setIsSendingTest( false );
 		}
