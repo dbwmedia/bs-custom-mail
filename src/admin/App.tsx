@@ -8,6 +8,7 @@ import {
   TemplateEditor,
   VoucherList,
   PDFTemplateList,
+  Settings,
 } from './views'
 import { ViewType } from './types'
 
@@ -81,6 +82,7 @@ export function App() {
     currentView === 'list' || currentView === 'create' || currentView === 'edit'
   const isVoucherView =
     currentView === 'vouchers' || currentView === 'pdf-templates'
+  const isSettingsView = currentView === 'settings'
 
   const renderContent = () => {
     switch (currentView) {
@@ -103,6 +105,8 @@ export function App() {
         return <VoucherList onNavigate={handleNavigate} />
       case 'pdf-templates':
         return <PDFTemplateList onNavigate={handleNavigate} />
+      case 'settings':
+        return <Settings />
       case 'list':
       default:
         return <TemplateList onNavigate={handleNavigate} />
@@ -192,6 +196,29 @@ export function App() {
             >
               <span style={{ fontSize: '18px' }}>🎁</span>
               {__('Gutscheine', 'bs-custom-mail')}
+            </button>
+            <button
+              onClick={() => handleTabNavigate('settings')}
+              style={{
+                padding: '16px 24px',
+                background: 'transparent',
+                border: 'none',
+                borderBottom: isSettingsView
+                  ? '2px solid #000'
+                  : '2px solid transparent',
+                fontWeight: isSettingsView ? 700 : 500,
+                color: isSettingsView ? '#000' : '#6b7280',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                fontSize: '15px',
+                marginBottom: '-2px',
+                transition: 'all 0.2s',
+              }}
+            >
+              <span style={{ fontSize: '18px' }}>⚙️</span>
+              {__('Einstellungen', 'bs-custom-mail')}
             </button>
           </div>
         </div>
