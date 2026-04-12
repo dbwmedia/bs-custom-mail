@@ -3,14 +3,16 @@
  */
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { Settings } from '../../../src/admin/views/Settings';
-import { useSettings } from '../../../src/admin/hooks';
+import { useSettings, useTemplates } from '../../../src/admin/hooks';
 
 // Mock the hooks
 jest.mock('../../../src/admin/hooks', () => ({
 	useSettings: jest.fn(),
+	useTemplates: jest.fn(),
 }));
 
 const mockedUseSettings = useSettings as jest.MockedFunction<typeof useSettings>;
+const mockedUseTemplates = useTemplates as jest.MockedFunction<typeof useTemplates>;
 
 describe('Settings', () => {
 	const mockSettings = {
@@ -21,6 +23,16 @@ describe('Settings', () => {
 
 	beforeEach(() => {
 		jest.clearAllMocks();
+		// Mock useTemplates for all tests
+		mockedUseTemplates.mockReturnValue({
+			templates: [],
+			isLoading: false,
+			createTemplate: jest.fn(),
+			updateTemplate: jest.fn(),
+			deleteTemplate: jest.fn(),
+			sendTestEmail: jest.fn(),
+			error: null,
+		});
 	});
 
 	it('should render loading state initially', () => {
