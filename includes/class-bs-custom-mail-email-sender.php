@@ -105,8 +105,10 @@ class Bs_Custom_Mail_Email_Sender {
 			}
 
 			if ( $template_key && ! in_array( $template_key, $sent_templates, true ) ) {
-				$this->send_product_email( $order, $product, $template_key );
-				$sent_templates[] = $template_key;
+				$success = $this->send_product_email( $order, $product, $template_key );
+				if ( $success ) {
+					$sent_templates[] = $template_key;
+				}
 			}
 		}
 
@@ -203,8 +205,11 @@ class Bs_Custom_Mail_Email_Sender {
 		$message = $this->build_email_body( $template, $order, $product, $attachment_data );
 
 		// Set headers
-		$from_name = get_option( 'bs_custom_mail_from_name', get_bloginfo( 'name' ) );
-		$from_email = get_option( 'bs_custom_mail_from_email', get_option( 'admin_email' ) );
+		$from_name  = get_option( 'bs_custom_mail_from_name', get_bloginfo( 'name' ) );
+		$from_email = get_option( 'bs_custom_mail_from_email', '' );
+		if ( empty( $from_email ) || ! is_email( $from_email ) ) {
+			$from_email = get_option( 'admin_email' );
+		}
 
 		$headers = array(
 			'Content-Type: text/html; charset=UTF-8',
@@ -643,28 +648,44 @@ class Bs_Custom_Mail_Email_Sender {
 </html>';
 
 		// Set headers
-		$from_name = get_option( 'bs_custom_mail_from_name', get_bloginfo( 'name' ) );
-		$from_email = get_option( 'bs_custom_mail_from_email', get_option( 'admin_email' ) );
+		$from_name  = get_option( 'bs_custom_mail_from_name', get_bloginfo( 'name' ) );
+		$from_email = get_option( 'bs_custom_mail_from_email', '' );
+		if ( empty( $from_email ) || ! is_email( $from_email ) ) {
+			$from_email = get_option( 'admin_email' );
+		}
 
 		$headers = array(
 			'Content-Type: text/html; charset=UTF-8',
 			'From: ' . $from_name . ' <' . $from_email . '>',
 		);
 
-		// Send test email with attachments if available
+		// Capture PHPMailer error details
+		$mail_error = null;
+		$error_handler = function( $wp_error ) use ( &$mail_error ) {
+			$mail_error = $wp_error;
+		};
+		add_action( 'wp_mail_failed', $error_handler );
+
 		$sent = wp_mail( $to, $subject, $body, $headers, $attachment_files );
+
+		remove_action( 'wp_mail_failed', $error_handler );
 
 		if ( $sent ) {
 			return array(
 				'success' => true,
 				'message' => __( 'Test email sent successfully.', 'bs-custom-mail' ),
 			);
-		} else {
-			return array(
-				'success' => false,
-				'message' => __( 'Failed to send test email. Please check your WordPress email configuration.', 'bs-custom-mail' ),
-			);
 		}
+
+		$error_message = __( 'Failed to send test email. Please check your WordPress email configuration.', 'bs-custom-mail' );
+		if ( $mail_error instanceof WP_Error ) {
+			$error_message .= ' ' . $mail_error->get_error_message();
+		}
+
+		return array(
+			'success' => false,
+			'message' => $error_message,
+		);
 	}
 
 	/**

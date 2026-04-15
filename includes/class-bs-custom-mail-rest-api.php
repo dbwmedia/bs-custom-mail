@@ -915,7 +915,7 @@ class Bs_Custom_Mail_REST_API {
 			return new WP_Error(
 				'rest_test_email_failed',
 				$result['message'],
-				array( 'status' => 500 )
+				array( 'status' => 422 )
 			);
 		}
 	}
@@ -928,16 +928,11 @@ class Bs_Custom_Mail_REST_API {
 	 */
 	public function get_placeholders() {
 		$placeholders = array(
-			array( 'code' => '{{Kundenname}}', 'label' => __( 'Kundenname', 'bs-custom-mail' ), 'description' => __( 'Vorname des Kunden', 'bs-custom-mail' ) ),
-			array( 'code' => '{{Produktname}}', 'label' => __( 'Produktname', 'bs-custom-mail' ), 'description' => __( 'Name des gebuchten Produkts', 'bs-custom-mail' ) ),
-			array( 'code' => '{{Kursdatum}}', 'label' => __( 'Kursdatum', 'bs-custom-mail' ), 'description' => __( 'Datum des Kurses', 'bs-custom-mail' ) ),
-			array( 'code' => '{{Rechnungsnummer}}', 'label' => __( 'Rechnungsnummer', 'bs-custom-mail' ), 'description' => __( 'Rechnungsnummer der Bestellung', 'bs-custom-mail' ) ),
-			array( 'code' => '{{Gutscheincode}}', 'label' => __( 'Gutscheincode', 'bs-custom-mail' ), 'description' => __( 'Gutscheincode (bei Gutscheinen)', 'bs-custom-mail' ) ),
-			array( 'code' => '{{Gutscheinwert}}', 'label' => __( 'Gutscheinwert', 'bs-custom-mail' ), 'description' => __( 'Wert des Gutscheins', 'bs-custom-mail' ) ),
+			array( 'code' => '{{customer_name}}', 'label' => __( 'Kundenname', 'bs-custom-mail' ), 'description' => __( 'Vorname des Kunden', 'bs-custom-mail' ) ),
+			array( 'code' => '{{customer_full_name}}', 'label' => __( 'Vollständiger Name', 'bs-custom-mail' ), 'description' => __( 'Vor- und Nachname des Kunden', 'bs-custom-mail' ) ),
 			array( 'code' => '{{order_number}}', 'label' => __( 'Bestellnummer', 'bs-custom-mail' ), 'description' => __( 'WooCommerce Bestellnummer', 'bs-custom-mail' ) ),
 			array( 'code' => '{{order_date}}', 'label' => __( 'Bestelldatum', 'bs-custom-mail' ), 'description' => __( 'Datum der Bestellung', 'bs-custom-mail' ) ),
-			array( 'code' => '{{customer_name}}', 'label' => __( 'Kundenname (EN)', 'bs-custom-mail' ), 'description' => __( 'Vorname des Kunden (EN Variante)', 'bs-custom-mail' ) ),
-			array( 'code' => '{{customer_full_name}}', 'label' => __( 'Vollständiger Name', 'bs-custom-mail' ), 'description' => __( 'Vor- und Nachname des Kunden', 'bs-custom-mail' ) ),
+			array( 'code' => '{{product_name}}', 'label' => __( 'Produktname', 'bs-custom-mail' ), 'description' => __( 'Name des gebuchten Produkts', 'bs-custom-mail' ) ),
 			array( 'code' => '{{site_name}}', 'label' => __( 'Website-Name', 'bs-custom-mail' ), 'description' => __( 'Name der Website', 'bs-custom-mail' ) ),
 			array( 'code' => '{{site_url}}', 'label' => __( 'Website-URL', 'bs-custom-mail' ), 'description' => __( 'URL der Website', 'bs-custom-mail' ) ),
 		);

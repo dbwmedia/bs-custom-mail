@@ -146,7 +146,11 @@ export function TemplateEditor( { mode, templateKey, onNavigate }: TemplateEdito
 			const result = await sendTestEmail( templateKey, testEmail );
 			success( result.message );
 		} catch ( err ) {
-			error( err instanceof Error ? err.message : __( 'Fehler beim Senden der Test-E-Mail.', 'bs-custom-mail' ) );
+			const apiMessage =
+				err instanceof Error
+					? err.message
+					: ( err as { message?: string } )?.message;
+			error( apiMessage || __( 'Fehler beim Senden der Test-E-Mail.', 'bs-custom-mail' ) );
 		} finally {
 			setIsSendingTest( false );
 		}

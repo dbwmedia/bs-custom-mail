@@ -759,7 +759,7 @@ class Bs_Custom_Mail_Voucher {
 			require_once plugin_dir_path( __FILE__ ) . 'class-bs-custom-mail-email-sender.php';
 		}
 
-		$sender = new Bs_Custom_Mail_Email_Sender( $this->version );
+		$sender = new Bs_Custom_Mail_Email_Sender( 'bs-custom-mail', $this->version );
 
 		// Prepare voucher data for email
 		$voucher_data = array(

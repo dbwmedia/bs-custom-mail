@@ -93,6 +93,11 @@ class Bs_Custom_Mail_Admin {
 			}
 		}
 
+		// Load on plugin settings page (AJAX test email button)
+		if ( 'bs-custom-mail_page_bs-custom-mail-settings' === $hook ) {
+			$load_script = true;
+		}
+
 		if ( ! $load_script ) {
 			return;
 		}
