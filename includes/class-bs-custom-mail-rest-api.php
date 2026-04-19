@@ -566,7 +566,7 @@ class Bs_Custom_Mail_REST_API {
 	public function get_template( $request ) {
 		global $wpdb;
 
-		$key        = $request->get_param( 'key' );
+		$key        = urldecode( $request->get_param( 'key' ) );
 		$table_name = $wpdb->prefix . 'bs_custom_mail_templates';
 
 		$template = $wpdb->get_row(
@@ -663,7 +663,7 @@ class Bs_Custom_Mail_REST_API {
 	public function update_template( $request ) {
 		global $wpdb;
 
-		$key        = $request->get_param( 'key' );
+		$key        = urldecode( $request->get_param( 'key' ) );
 		$table_name = $wpdb->prefix . 'bs_custom_mail_templates';
 
 		// Check if template exists
@@ -757,7 +757,7 @@ class Bs_Custom_Mail_REST_API {
 	public function delete_template( $request ) {
 		global $wpdb;
 
-		$key        = $request->get_param( 'key' );
+		$key        = urldecode( $request->get_param( 'key' ) );
 		$table_name = $wpdb->prefix . 'bs_custom_mail_templates';
 
 		// Check if template exists
@@ -902,7 +902,7 @@ class Bs_Custom_Mail_REST_API {
 	 * @return   WP_REST_Response|WP_Error
 	 */
 	public function send_test_email( $request ) {
-		$key   = $request->get_param( 'key' );
+		$key   = urldecode( $request->get_param( 'key' ) );
 		$email = $request->get_param( 'email' );
 
 		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-bs-custom-mail-email-sender.php';
