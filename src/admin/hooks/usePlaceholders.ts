@@ -26,6 +26,8 @@ export function usePlaceholders(): UsePlaceholdersReturn {
 				path: '/bs-custom-mail/v1/placeholders',
 			} );
 			setPlaceholders( data );
+		} catch {
+			// Non-critical — placeholder list stays empty on failure
 		} finally {
 			setIsLoading( false );
 		}

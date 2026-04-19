@@ -28,6 +28,8 @@ export function useDefaultTemplates(): UseDefaultTemplatesReturn {
 				path: '/bs-custom-mail/v1/default-templates',
 			} );
 			setTemplates( data );
+		} catch {
+			// Non-critical — default template list stays empty on failure
 		} finally {
 			setIsLoading( false );
 		}
