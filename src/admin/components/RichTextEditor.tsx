@@ -1,7 +1,7 @@
 /**
  * Rich Text Editor Component - WYSIWYG
  */
-import { useRef, useState, useCallback } from '@wordpress/element';
+import { useRef, useState, useCallback, useEffect } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { Button } from '@wordpress/components';
 
@@ -68,13 +68,23 @@ export function RichTextEditor( { value, onChange, placeholder }: RichTextEditor
 		editorRef.current?.focus();
 	}, [ activeCommands, handleInput ] );
 
-	// Set initial content
+	// Sync external value changes into the editor when it is not focused.
+	// This handles the case where the template loads asynchronously after
+	// the editor has already mounted (e.g. edit mode).
+	useEffect( () => {
+		const el = editorRef.current;
+		if ( el && document.activeElement !== el && el.innerHTML !== value ) {
+			el.innerHTML = value || '';
+		}
+	}, [ value ] );
+
+	// Set initial content on first mount
 	const setInitialContent = useCallback( ( el: HTMLDivElement | null ) => {
 		if ( el && ! el.innerHTML && value ) {
 			el.innerHTML = value;
 		}
 		editorRef.current = el;
-	}, [ value ] );
+	}, [] ); // eslint-disable-line react-hooks/exhaustive-deps
 
 	return (
 		<div className="bs-rich-editor-wrapper">
