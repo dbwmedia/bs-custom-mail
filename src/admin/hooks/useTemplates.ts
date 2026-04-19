@@ -27,7 +27,11 @@ export function useTemplates(): UseTemplatesReturn {
 			const data = await apiFetch<Template[]>( {
 				path: '/bs-custom-mail/v1/templates',
 			} );
-			setTemplates( data );
+			// MySQL returns is_active as "1"/"0" strings — normalize to boolean
+			setTemplates( data.map( ( t ) => ( {
+				...t,
+				is_active: t.is_active === true || ( t.is_active as unknown as string ) === '1',
+			} ) ) );
 		} catch ( err ) {
 			const errorMessage = err instanceof Error ? err.message : 'Network error';
 			setError( errorMessage );
