@@ -114,11 +114,11 @@ export function TemplateEditor( { mode, templateKey, onNavigate }: TemplateEdito
 				success( __( 'Template erfolgreich gespeichert.', 'bs-custom-mail' ) );
 			}
 		} catch ( err ) {
-			error(
+			const apiMessage =
 				err instanceof Error
 					? err.message
-					: __( 'Fehler beim Speichern.', 'bs-custom-mail' )
-			);
+					: ( err as { message?: string } )?.message;
+			error( apiMessage || __( 'Fehler beim Speichern.', 'bs-custom-mail' ) );
 		} finally {
 			setIsSaving( false );
 		}

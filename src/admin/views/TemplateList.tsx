@@ -38,7 +38,8 @@ export function TemplateList( { onNavigate }: TemplateListProps ) {
 			await deleteTemplate( template.template_key );
 			success( __( 'Template erfolgreich gelöscht.', 'bs-custom-mail' ) );
 		} catch ( err ) {
-			error( __( 'Fehler beim Löschen des Templates.', 'bs-custom-mail' ) );
+			const apiMessage = ( err as { message?: string } )?.message;
+			error( apiMessage || __( 'Fehler beim Löschen des Templates.', 'bs-custom-mail' ) );
 		}
 	};
 
