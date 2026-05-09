@@ -222,6 +222,9 @@ export function VoucherList( { onNavigate }: Props ) {
 										{ __( 'Status', 'bs-custom-mail' ) }
 									</th>
 									<th style={ { padding: '16px', textAlign: 'left', fontSize: '13px', fontWeight: 600, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' } }>
+										{ __( 'Eingelöst am', 'bs-custom-mail' ) }
+									</th>
+									<th style={ { padding: '16px', textAlign: 'left', fontSize: '13px', fontWeight: 600, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' } }>
 										{ __( 'Bestellung', 'bs-custom-mail' ) }
 									</th>
 									<th style={ { padding: '16px', textAlign: 'left', fontSize: '13px', fontWeight: 600, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' } }>
@@ -268,6 +271,9 @@ export function VoucherList( { onNavigate }: Props ) {
 											} }>
 												{ getStatusLabel( voucher.status ) }
 											</span>
+										</td>
+										<td style={ { padding: '16px', fontSize: '13px', color: '#6b7280' } }>
+											{ voucher.used_at ? formatDate( voucher.used_at ) : '-' }
 										</td>
 										<td style={ { padding: '16px', fontSize: '13px', color: '#6b7280' } }>
 											#{ voucher.order_id }

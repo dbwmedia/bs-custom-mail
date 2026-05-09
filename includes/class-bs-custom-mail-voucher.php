@@ -116,6 +116,10 @@ class Bs_Custom_Mail_Voucher {
 		add_action( 'woocommerce_order_status_cancelled', array( $this, 'cancel_voucher' ) );
 		add_action( 'woocommerce_order_status_refunded', array( $this, 'cancel_voucher' ) );
 
+		// Sync voucher status when a coupon from this plugin is redeemed.
+		add_action( 'woocommerce_order_status_processing', array( $this, 'sync_voucher_status_on_order' ) );
+		add_action( 'woocommerce_order_status_completed', array( $this, 'sync_voucher_status_on_order' ) );
+
 		// Admin scripts
 		add_action( 'admin_enqueue_scripts', array( $this, 'admin_scripts' ) );
 	}
@@ -835,6 +839,60 @@ class Bs_Custom_Mail_Voucher {
 
 			$order->add_order_note( sprintf(
 				__( 'Wertgutschein %s wurde aufgrund von Stornierung ungültig gemacht.', 'bs-custom-mail' ),
+				$voucher->voucher_code
+			) );
+		}
+	}
+
+	/**
+	 * Sync voucher status to 'used' when a matching coupon is redeemed in an order.
+	 *
+	 * @since    2.0.0
+	 * @param    int    $order_id    Order ID.
+	 */
+	public function sync_voucher_status_on_order( $order_id ) {
+		$order = wc_get_order( $order_id );
+
+		if ( ! $order ) {
+			return;
+		}
+
+		$coupon_codes = $order->get_coupon_codes();
+
+		if ( empty( $coupon_codes ) ) {
+			return;
+		}
+
+		global $wpdb;
+		$table_name = $wpdb->prefix . 'bs_custom_mail_vouchers';
+
+		foreach ( $coupon_codes as $coupon_code ) {
+			$voucher = $wpdb->get_row( $wpdb->prepare(
+				"SELECT * FROM {$table_name} WHERE voucher_code = %s AND status = 'active'",
+				strtoupper( $coupon_code )
+			) );
+
+			if ( ! $voucher ) {
+				continue;
+			}
+
+			// Skip if this voucher belongs to the same order that created it.
+			if ( (int) $voucher->order_id === (int) $order_id ) {
+				continue;
+			}
+
+			$wpdb->update(
+				$table_name,
+				array(
+					'status'  => 'used',
+					'used_at' => current_time( 'mysql' ),
+				),
+				array( 'id' => $voucher->id )
+			);
+
+			$order->add_order_note( sprintf(
+				/* translators: %s: voucher code */
+				__( 'Wertgutschein %s wurde als eingelöst markiert.', 'bs-custom-mail' ),
 				$voucher->voucher_code
 			) );
 		}
