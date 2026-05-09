@@ -928,13 +928,27 @@ class Bs_Custom_Mail_REST_API {
 	 */
 	public function get_placeholders() {
 		$placeholders = array(
-			array( 'code' => '{{customer_name}}', 'label' => __( 'Kundenname', 'bs-custom-mail' ), 'description' => __( 'Vorname des Kunden', 'bs-custom-mail' ) ),
-			array( 'code' => '{{customer_full_name}}', 'label' => __( 'Vollständiger Name', 'bs-custom-mail' ), 'description' => __( 'Vor- und Nachname des Kunden', 'bs-custom-mail' ) ),
-			array( 'code' => '{{order_number}}', 'label' => __( 'Bestellnummer', 'bs-custom-mail' ), 'description' => __( 'WooCommerce Bestellnummer', 'bs-custom-mail' ) ),
-			array( 'code' => '{{order_date}}', 'label' => __( 'Bestelldatum', 'bs-custom-mail' ), 'description' => __( 'Datum der Bestellung', 'bs-custom-mail' ) ),
-			array( 'code' => '{{product_name}}', 'label' => __( 'Produktname', 'bs-custom-mail' ), 'description' => __( 'Name des gebuchten Produkts', 'bs-custom-mail' ) ),
-			array( 'code' => '{{site_name}}', 'label' => __( 'Website-Name', 'bs-custom-mail' ), 'description' => __( 'Name der Website', 'bs-custom-mail' ) ),
-			array( 'code' => '{{site_url}}', 'label' => __( 'Website-URL', 'bs-custom-mail' ), 'description' => __( 'URL der Website', 'bs-custom-mail' ) ),
+			// Standard placeholders – English originals.
+			array( 'code' => '{{customer_name}}', 'label' => __( 'Kundenname (EN)', 'bs-custom-mail' ), 'description' => __( 'Vorname des Kunden', 'bs-custom-mail' ) ),
+			array( 'code' => '{{customer_full_name}}', 'label' => __( 'Vollständiger Name (EN)', 'bs-custom-mail' ), 'description' => __( 'Vor- und Nachname des Kunden', 'bs-custom-mail' ) ),
+			array( 'code' => '{{order_number}}', 'label' => __( 'Bestellnummer (EN)', 'bs-custom-mail' ), 'description' => __( 'WooCommerce Bestellnummer', 'bs-custom-mail' ) ),
+			array( 'code' => '{{order_date}}', 'label' => __( 'Bestelldatum (EN)', 'bs-custom-mail' ), 'description' => __( 'Datum der Bestellung', 'bs-custom-mail' ) ),
+			array( 'code' => '{{product_name}}', 'label' => __( 'Produktname (EN)', 'bs-custom-mail' ), 'description' => __( 'Name des gebuchten Produkts', 'bs-custom-mail' ) ),
+			array( 'code' => '{{site_name}}', 'label' => __( 'Website-Name (EN)', 'bs-custom-mail' ), 'description' => __( 'Name der Website', 'bs-custom-mail' ) ),
+			array( 'code' => '{{site_url}}', 'label' => __( 'Website-URL (EN)', 'bs-custom-mail' ), 'description' => __( 'URL der Website', 'bs-custom-mail' ) ),
+			// Standard placeholders – German aliases.
+			array( 'code' => '{{Kundenname}}', 'label' => __( 'Kundenname', 'bs-custom-mail' ), 'description' => __( 'Vorname des Kunden', 'bs-custom-mail' ) ),
+			array( 'code' => '{{Kundenvollername}}', 'label' => __( 'Vollständiger Name', 'bs-custom-mail' ), 'description' => __( 'Vor- und Nachname des Kunden', 'bs-custom-mail' ) ),
+			array( 'code' => '{{Rechnungsnummer}}', 'label' => __( 'Rechnungsnummer', 'bs-custom-mail' ), 'description' => __( 'WooCommerce Bestellnummer', 'bs-custom-mail' ) ),
+			array( 'code' => '{{Bestellnummer}}', 'label' => __( 'Bestellnummer', 'bs-custom-mail' ), 'description' => __( 'WooCommerce Bestellnummer', 'bs-custom-mail' ) ),
+			array( 'code' => '{{Bestelldatum}}', 'label' => __( 'Bestelldatum', 'bs-custom-mail' ), 'description' => __( 'Datum der Bestellung', 'bs-custom-mail' ) ),
+			array( 'code' => '{{Produktname}}', 'label' => __( 'Produktname', 'bs-custom-mail' ), 'description' => __( 'Name des gebuchten Produkts', 'bs-custom-mail' ) ),
+			array( 'code' => '{{Seitenname}}', 'label' => __( 'Seitenname', 'bs-custom-mail' ), 'description' => __( 'Name der Website', 'bs-custom-mail' ) ),
+			array( 'code' => '{{Seiten-URL}}', 'label' => __( 'Seiten-URL', 'bs-custom-mail' ), 'description' => __( 'URL der Website', 'bs-custom-mail' ) ),
+			// Gutschein-specific placeholders (only populated for Gutschein-Produkte).
+			array( 'code' => '{{Gutscheincode}}', 'label' => __( 'Gutscheincode', 'bs-custom-mail' ), 'description' => __( 'Automatisch generierter Gutscheincode', 'bs-custom-mail' ) ),
+			array( 'code' => '{{Gutscheinwert}}', 'label' => __( 'Gutscheinwert', 'bs-custom-mail' ), 'description' => __( 'Wert des Gutscheins (z.B. 90,00 €)', 'bs-custom-mail' ) ),
+			array( 'code' => '{{Gutscheinablauf}}', 'label' => __( 'Gutscheinablauf', 'bs-custom-mail' ), 'description' => __( 'Ablaufdatum des Gutscheins', 'bs-custom-mail' ) ),
 		);
 
 		return rest_ensure_response( $placeholders );

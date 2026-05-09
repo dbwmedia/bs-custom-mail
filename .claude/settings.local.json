@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(./vendor/bin/phpcs --standard=WordPress includes/class-bs-custom-mail-email-sender.php)"
     ]
   }
 }

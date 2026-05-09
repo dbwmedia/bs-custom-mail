@@ -185,24 +185,42 @@ class Bs_Custom_Mail_Email_Sender {
 			return false;
 		}
 
+		// Build extra placeholders from voucher data if available.
+		// The voucher hook (woocommerce_order_status_processing) fires before this hook
+		// (woocommerce_order_status_changed), so voucher meta is already saved at this point.
+		$extra         = array();
+		$vouchers_list = $order->get_meta( '_bs_vouchers_list' );
+		if ( ! empty( $vouchers_list ) && is_array( $vouchers_list ) ) {
+			$first_voucher = reset( $vouchers_list );
+			if ( isset( $first_voucher['code'] ) ) {
+				$extra['{{Gutscheincode}}'] = strtoupper( $first_voucher['code'] );
+			}
+			if ( isset( $first_voucher['value'] ) ) {
+				$extra['{{Gutscheinwert}}'] = wp_strip_all_tags( wc_price( $first_voucher['value'] ) );
+			}
+			if ( isset( $first_voucher['expiry_date'] ) ) {
+				$extra['{{Gutscheinablauf}}'] = date_i18n( get_option( 'date_format' ), strtotime( $first_voucher['expiry_date'] ) );
+			}
+		}
+
 		// Prepare email content
-		$to = $order->get_billing_email();
-		$subject = $this->parse_placeholders( $template->subject, $order, $product );
-		
+		$to      = $order->get_billing_email();
+		$subject = $this->parse_placeholders( $template->subject, $order, $product, $extra );
+
 		// Get template attachments
-		$template_attachments = $this->get_template_attachments( $template_key );
+		$template_attachments     = $this->get_template_attachments( $template_key );
 		$template_attachment_data = $this->get_template_attachment_data( $template_key );
-		
+
 		// Get product attachments
-		$product_attachments = $this->get_product_attachments( $product->get_id() );
+		$product_attachments     = $this->get_product_attachments( $product->get_id() );
 		$product_attachment_data = $this->get_attachment_data_for_display( $product->get_id() );
-		
+
 		// Combine attachments
-		$attachments = array_merge( $template_attachments, $product_attachments );
+		$attachments     = array_merge( $template_attachments, $product_attachments );
 		$attachment_data = array_merge( $template_attachment_data, $product_attachment_data );
-		
+
 		// Build email body with attachments section
-		$message = $this->build_email_body( $template, $order, $product, $attachment_data );
+		$message = $this->build_email_body( $template, $order, $product, $attachment_data, $extra );
 
 		// Set headers
 		$from_name  = get_option( 'bs_custom_mail_from_name', get_bloginfo( 'name' ) );
@@ -242,16 +260,18 @@ class Bs_Custom_Mail_Email_Sender {
 	 * Build complete email body.
 	 *
 	 * @since    1.0.0
+	 * @since    2.2.0 Added $extra parameter for additional placeholder context.
 	 * @param    object      $template         Template object from database.
 	 * @param    WC_Order    $order            Order object.
 	 * @param    WC_Product  $product          Product object.
 	 * @param    array       $attachments      Array of attachment data for display.
+	 * @param    array       $extra            Optional additional placeholder key => value pairs.
 	 * @return   string                        Complete HTML email.
 	 */
-	private function build_email_body( $template, $order, $product, $attachments = array() ) {
-		$header = $this->parse_placeholders( $template->header_text, $order, $product );
-		$content = $this->parse_placeholders( $template->content, $order, $product );
-		$footer = $this->parse_placeholders( $template->footer_text, $order, $product );
+	private function build_email_body( $template, $order, $product, $attachments = array(), $extra = array() ) {
+		$header  = $this->parse_placeholders( $template->header_text, $order, $product, $extra );
+		$content = $this->parse_placeholders( $template->content, $order, $product, $extra );
+		$footer  = $this->parse_placeholders( $template->footer_text, $order, $product, $extra );
 
 		// Build attachments HTML section if attachments exist
 		$attachments_html = '';
@@ -483,21 +503,37 @@ class Bs_Custom_Mail_Email_Sender {
 	 * Parse placeholders in content.
 	 *
 	 * @since    1.0.0
+	 * @since    2.2.0 Added $extra parameter and German placeholder aliases.
 	 * @param    string      $content    Content with placeholders.
 	 * @param    WC_Order    $order      Order object.
 	 * @param    WC_Product  $product    Product object.
+	 * @param    array       $extra     Optional additional placeholder key => value pairs.
 	 * @return   string                  Content with replaced placeholders.
 	 */
-	private function parse_placeholders( $content, $order, $product ) {
+	private function parse_placeholders( $content, $order, $product, $extra = array() ) {
 		$placeholders = array(
-			'{{customer_name}}' => $order->get_billing_first_name(),
+			// English placeholders (original).
+			'{{customer_name}}'      => $order->get_billing_first_name(),
 			'{{customer_full_name}}' => $order->get_formatted_billing_full_name(),
-			'{{order_number}}' => $order->get_order_number(),
-			'{{order_date}}' => wc_format_datetime( $order->get_date_created() ),
-			'{{product_name}}' => $product->get_name(),
-			'{{site_name}}' => get_bloginfo( 'name' ),
-			'{{site_url}}' => home_url(),
+			'{{order_number}}'       => $order->get_order_number(),
+			'{{order_date}}'         => wc_format_datetime( $order->get_date_created() ),
+			'{{product_name}}'       => $product->get_name(),
+			'{{site_name}}'          => get_bloginfo( 'name' ),
+			'{{site_url}}'           => home_url(),
+			// German aliases.
+			'{{Kundenname}}'         => $order->get_billing_first_name(),
+			'{{Kundenvollername}}'   => $order->get_formatted_billing_full_name(),
+			'{{Bestellnummer}}'      => $order->get_order_number(),
+			'{{Rechnungsnummer}}'    => $order->get_order_number(),
+			'{{Bestelldatum}}'       => wc_format_datetime( $order->get_date_created() ),
+			'{{Produktname}}'        => $product->get_name(),
+			'{{Seitenname}}'         => get_bloginfo( 'name' ),
+			'{{Seiten-URL}}'         => home_url(),
 		);
+
+		if ( ! empty( $extra ) ) {
+			$placeholders = array_merge( $placeholders, $extra );
+		}
 
 		return str_replace(
 			array_keys( $placeholders ),
