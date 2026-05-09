@@ -165,41 +165,42 @@ class Bs_Custom_Mail_PDF_Generator {
 			$x = isset( $position['x'] ) ? floatval( $position['x'] ) : 50;
 			$y = isset( $position['y'] ) ? floatval( $position['y'] ) : 50;
 			$field_font_size = isset( $position['fontSize'] ) ? intval( $position['fontSize'] ) : $font_size;
+			$field_color = isset( $position['color'] ) && $position['color'] ? $position['color'] : null;
 
 			switch ( $field_key ) {
 				case 'wert':
 					if ( isset( $data['wert'] ) ) {
-						$this->render_value_field( $pdf, $data['wert'], $x, $y, $field_font_size );
+						$this->render_value_field( $pdf, $data['wert'], $x, $y, $field_font_size, $field_color );
 					}
 					break;
 
 				case 'code':
 					if ( isset( $data['code'] ) ) {
-						$this->render_code_field( $pdf, $data['code'], $x, $y, $field_font_size );
+						$this->render_code_field( $pdf, $data['code'], $x, $y, $field_font_size, $field_color );
 					}
 					break;
 
 				case 'name':
 					if ( ! empty( $data['name'] ) ) {
-						$this->render_name_field( $pdf, $data['name'], $x, $y, $field_font_size );
+						$this->render_name_field( $pdf, $data['name'], $x, $y, $field_font_size, $field_color );
 					}
 					break;
 
 				case 'expiry':
 					if ( isset( $data['expiry'] ) ) {
-						$this->render_expiry_field( $pdf, $data['expiry'], $x, $y, $field_font_size );
+						$this->render_expiry_field( $pdf, $data['expiry'], $x, $y, $field_font_size, $field_color );
 					}
 					break;
 
 				case 'adressant':
 					if ( ! empty( $data['adressant'] ) ) {
-						$this->render_text_field( $pdf, $data['adressant'], $x, $y, $field_font_size, 'L' );
+						$this->render_text_field( $pdf, $data['adressant'], $x, $y, $field_font_size, 'L', $field_color );
 					}
 					break;
 
 				case 'notiz':
 					if ( ! empty( $data['notiz'] ) ) {
-						$this->render_text_field( $pdf, $data['notiz'], $x, $y, $field_font_size, 'C' );
+						$this->render_text_field( $pdf, $data['notiz'], $x, $y, $field_font_size, 'C', $field_color );
 					}
 					break;
 			}
@@ -300,9 +301,10 @@ class Bs_Custom_Mail_PDF_Generator {
 	 * @param    float     $y          Y position.
 	 * @param    int       $font_size  Font size.
 	 */
-	private function render_value_field( $pdf, $value, $x, $y, $font_size ) {
+	private function render_value_field( $pdf, $value, $x, $y, $font_size, $color = null ) {
 		$pdf->SetFont( 'Arial', 'B', $font_size );
-		$pdf->SetTextColor( 5, 150, 105 );
+		$rgb = $color ? $this->hex_to_rgb( $color ) : array( 'r' => 5, 'g' => 150, 'b' => 105 );
+		$pdf->SetTextColor( $rgb['r'], $rgb['g'], $rgb['b'] );
 		$pdf->SetXY( $x, $y );
 		$pdf->Cell( 0, 10, $this->format_price( $value ), 0, 0, 'C' );
 	}
@@ -317,9 +319,10 @@ class Bs_Custom_Mail_PDF_Generator {
 	 * @param    float     $y          Y position.
 	 * @param    int       $font_size  Font size.
 	 */
-	private function render_code_field( $pdf, $code, $x, $y, $font_size ) {
+	private function render_code_field( $pdf, $code, $x, $y, $font_size, $color = null ) {
 		$pdf->SetFont( 'Courier', 'B', $font_size );
-		$pdf->SetTextColor( 30, 58, 138 );
+		$rgb = $color ? $this->hex_to_rgb( $color ) : array( 'r' => 30, 'g' => 58, 'b' => 138 );
+		$pdf->SetTextColor( $rgb['r'], $rgb['g'], $rgb['b'] );
 		$pdf->SetXY( $x, $y );
 		$pdf->Cell( 0, 10, strtoupper( $code ), 0, 0, 'C' );
 	}
@@ -334,9 +337,10 @@ class Bs_Custom_Mail_PDF_Generator {
 	 * @param    float     $y          Y position.
 	 * @param    int       $font_size  Font size.
 	 */
-	private function render_name_field( $pdf, $name, $x, $y, $font_size ) {
+	private function render_name_field( $pdf, $name, $x, $y, $font_size, $color = null ) {
 		$pdf->SetFont( 'Arial', '', $font_size );
-		$pdf->SetTextColor( 55, 65, 81 );
+		$rgb = $color ? $this->hex_to_rgb( $color ) : array( 'r' => 55, 'g' => 65, 'b' => 81 );
+		$pdf->SetTextColor( $rgb['r'], $rgb['g'], $rgb['b'] );
 		$pdf->SetXY( $x, $y );
 		$pdf->Cell( 0, 10, $this->sanitize_text( $name ), 0, 0, 'C' );
 	}
@@ -351,9 +355,10 @@ class Bs_Custom_Mail_PDF_Generator {
 	 * @param    float     $y          Y position.
 	 * @param    int       $font_size  Font size.
 	 */
-	private function render_expiry_field( $pdf, $expiry, $x, $y, $font_size ) {
+	private function render_expiry_field( $pdf, $expiry, $x, $y, $font_size, $color = null ) {
 		$pdf->SetFont( 'Arial', '', $font_size );
-		$pdf->SetTextColor( 107, 114, 128 );
+		$rgb = $color ? $this->hex_to_rgb( $color ) : array( 'r' => 107, 'g' => 114, 'b' => 128 );
+		$pdf->SetTextColor( $rgb['r'], $rgb['g'], $rgb['b'] );
 		$pdf->SetXY( $x, $y );
 		$pdf->Cell( 0, 10, __( 'Gueltig bis:', 'bs-custom-mail' ) . ' ' . $expiry, 0, 0, 'C' );
 	}
@@ -369,9 +374,10 @@ class Bs_Custom_Mail_PDF_Generator {
 	 * @param    int       $font_size  Font size.
 	 * @param    string    $align      Alignment (L, C, R).
 	 */
-	private function render_text_field( $pdf, $text, $x, $y, $font_size, $align = 'C' ) {
+	private function render_text_field( $pdf, $text, $x, $y, $font_size, $align = 'C', $color = null ) {
 		$pdf->SetFont( 'Arial', '', $font_size );
-		$pdf->SetTextColor( 55, 65, 81 );
+		$rgb = $color ? $this->hex_to_rgb( $color ) : array( 'r' => 55, 'g' => 65, 'b' => 81 );
+		$pdf->SetTextColor( $rgb['r'], $rgb['g'], $rgb['b'] );
 		$pdf->SetXY( $x, $y );
 		$pdf->Cell( 0, 10, $this->sanitize_text( $text ), 0, 0, $align );
 	}

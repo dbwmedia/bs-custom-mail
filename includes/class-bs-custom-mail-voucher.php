@@ -764,7 +764,7 @@ class Bs_Custom_Mail_Voucher {
 		// Prepare voucher data for email
 		$voucher_data = array(
 			'gutschein_code' => $voucher_info['code'],
-			'gutschein_wert' => wc_price( $voucher_info['value'] ),
+			'gutschein_wert' => wp_strip_all_tags( wc_price( $voucher_info['value'] ) ),
 			'gutschein_ablauf' => date_i18n( get_option( 'date_format' ), strtotime( $voucher_info['expiry_date'] ) ),
 			'empfaenger_name' => $voucher_info['recipient_name'] ?: $order->get_billing_first_name(),
 			'persoenliche_nachricht' => $voucher_info['message'],

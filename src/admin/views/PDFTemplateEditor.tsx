@@ -33,12 +33,12 @@ const AVAILABLE_FIELDS: PDFFieldDefinition[] = [
 ]
 
 const defaultConfig: PDFTemplateConfig = {
-  wert: { x: 105, y: 100, fontSize: 28 },
-  code: { x: 105, y: 140, fontSize: 18 },
-  name: { x: 105, y: 180, fontSize: 16 },
-  expiry: { x: 105, y: 220, fontSize: 14 },
-  adressant: { x: 20, y: 40, fontSize: 12 },
-  notiz: { x: 105, y: 260, fontSize: 12 },
+  wert: { x: 105, y: 100, fontSize: 28, color: '#059669' },
+  code: { x: 105, y: 140, fontSize: 18, color: '#1e40af' },
+  name: { x: 105, y: 180, fontSize: 16, color: '#374151' },
+  expiry: { x: 105, y: 220, fontSize: 14, color: '#6b7280' },
+  adressant: { x: 20, y: 40, fontSize: 12, color: '#7c3aed' },
+  notiz: { x: 105, y: 260, fontSize: 12, color: '#dc2626' },
 }
 
 const defaultActiveFields = ['wert', 'code', 'name', 'expiry']
@@ -71,7 +71,11 @@ export function PDFTemplateEditor({
         const parsed = typeof template.template_config === 'string'
           ? JSON.parse(template.template_config)
           : template.template_config
-        setConfig({ ...defaultConfig, ...parsed })
+        const merged = { ...defaultConfig }
+        ;(Object.keys(parsed) as Array<keyof PDFTemplateConfig>).forEach((key) => {
+          merged[key] = { ...(defaultConfig[key] || {}), ...parsed[key] }
+        })
+        setConfig(merged)
       } catch {
         setConfig(defaultConfig)
       }
@@ -193,6 +197,14 @@ export function PDFTemplateEditor({
     setConfig(prev => ({
       ...prev,
       [fieldKey]: { ...prev[fieldKey as keyof PDFTemplateConfig], fontSize: value },
+    }))
+  }
+
+  // Update field color
+  const updateColor = (fieldKey: string, value: string) => {
+    setConfig(prev => ({
+      ...prev,
+      [fieldKey]: { ...prev[fieldKey as keyof PDFTemplateConfig], color: value },
     }))
   }
 
@@ -332,6 +344,8 @@ export function PDFTemplateEditor({
             const fieldConfig = config[fieldKey as keyof PDFTemplateConfig]
             if (!fieldDef || !fieldConfig) return null
 
+            const fieldColor = fieldConfig.color || fieldDef.color
+
             return (
               <div
                 key={fieldKey}
@@ -341,9 +355,9 @@ export function PDFTemplateEditor({
                   top: `${(fieldConfig.y / canvasDims.height) * 100}%`,
                   transform: 'translate(-50%, -50%)',
                   padding: '8px 16px',
-                  background: isDragging === fieldKey ? fieldDef.color : '#fff',
-                  color: isDragging === fieldKey ? '#fff' : fieldDef.color,
-                  border: `2px solid ${fieldDef.color}`,
+                  background: isDragging === fieldKey ? fieldColor : '#fff',
+                  color: isDragging === fieldKey ? '#fff' : fieldColor,
+                  border: `2px solid ${fieldColor}`,
                   borderRadius: '8px',
                   cursor: 'move',
                   fontSize: `${fieldConfig.fontSize || fieldDef.defaultPosition.fontSize}px`,
@@ -668,6 +682,8 @@ export function PDFTemplateEditor({
                       const fieldConfig = config[fieldKey as keyof PDFTemplateConfig]
                       if (!fieldDef || !fieldConfig) return null
 
+                      const currentColor = fieldConfig.color || fieldDef.color
+
                       return (
                         <div
                           key={fieldKey}
@@ -688,7 +704,7 @@ export function PDFTemplateEditor({
                               width: '8px',
                               height: '8px',
                               borderRadius: '50%',
-                              background: fieldDef.color,
+                              background: currentColor,
                             }} />
                             <span style={{
                               fontSize: '13px',
@@ -771,6 +787,45 @@ export function PDFTemplateEditor({
                                 fontSize: '13px',
                               }}
                             />
+                          </div>
+
+                          <div style={{ marginTop: '8px' }}>
+                            <label style={{
+                              fontSize: '11px',
+                              color: '#6b7280',
+                              marginBottom: '4px',
+                              display: 'block',
+                            }}>
+                              Textfarbe
+                            </label>
+                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                              <input
+                                type="color"
+                                value={currentColor}
+                                onChange={(e) => updateColor(fieldKey, e.target.value)}
+                                style={{
+                                  width: '36px',
+                                  height: '30px',
+                                  border: '1px solid #e5e7eb',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  padding: '2px',
+                                }}
+                              />
+                              <input
+                                type="text"
+                                value={currentColor}
+                                onChange={(e) => updateColor(fieldKey, e.target.value)}
+                                style={{
+                                  flex: 1,
+                                  padding: '6px',
+                                  border: '1px solid #e5e7eb',
+                                  borderRadius: '6px',
+                                  fontSize: '12px',
+                                  fontFamily: 'monospace',
+                                }}
+                              />
+                            </div>
                           </div>
                         </div>
                       )

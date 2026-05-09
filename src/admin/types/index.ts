@@ -114,6 +114,7 @@ export interface Position {
 	x: number;
 	y: number;
 	fontSize?: number;
+	color?: string;
 	visible?: boolean;
 }
 
