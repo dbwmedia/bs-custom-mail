@@ -96,6 +96,9 @@ class Bs_Custom_Mail_Voucher {
 		add_action( 'woocommerce_product_options_general_product_data', array( $this, 'add_product_fields' ) );
 		add_action( 'woocommerce_process_product_meta', array( $this, 'save_product_fields' ) );
 
+		// Make voucher products purchasable even without a fixed price set.
+		add_filter( 'woocommerce_is_purchasable', array( $this, 'make_voucher_purchasable' ), 10, 2 );
+
 		// Frontend fields
 		add_action( 'woocommerce_before_add_to_cart_button', array( $this, 'add_frontend_fields' ) );
 
@@ -270,6 +273,25 @@ class Bs_Custom_Mail_Voucher {
 		if ( isset( $_POST['_bs_custom_mail_voucher_max_price'] ) ) {
 			update_post_meta( $post_id, '_bs_custom_mail_voucher_max_price', floatval( $_POST['_bs_custom_mail_voucher_max_price'] ) );
 		}
+	}
+
+	/**
+	 * Make voucher products purchasable regardless of their WooCommerce price.
+	 *
+	 * Without this filter, WooCommerce hides the add-to-cart form for products
+	 * with no price set. The actual price is set at cart-level via set_cart_item_price().
+	 *
+	 * @since    2.2.0
+	 * @param    bool       $purchasable Current purchasable state.
+	 * @param    WC_Product $product     Product object.
+	 * @return   bool
+	 */
+	public function make_voucher_purchasable( $purchasable, $product ) {
+		if ( get_post_meta( $product->get_id(), '_bs_custom_mail_voucher', true ) === 'yes' ) {
+			return true;
+		}
+
+		return $purchasable;
 	}
 
 	/**
