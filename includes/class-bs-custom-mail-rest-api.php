@@ -210,8 +210,10 @@ class Bs_Custom_Mail_REST_API {
 							'type'    => 'integer',
 						),
 						'per_page' => array(
-							'default' => 20,
-							'type'    => 'integer',
+							'default'  => 20,
+							'type'     => 'integer',
+							'minimum'  => 1,
+							'maximum'  => 100,
 						),
 						'status' => array(
 							'default' => '',

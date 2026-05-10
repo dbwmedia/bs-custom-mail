@@ -270,12 +270,14 @@ class Bs_Custom_Mail_Voucher {
 			update_post_meta( $post_id, '_bs_custom_mail_voucher_fixed_price_value', floatval( $_POST['_bs_custom_mail_voucher_fixed_price_value'] ) );
 		}
 
-		if ( isset( $_POST['_bs_custom_mail_voucher_min_price'] ) ) {
-			update_post_meta( $post_id, '_bs_custom_mail_voucher_min_price', floatval( $_POST['_bs_custom_mail_voucher_min_price'] ) );
-		}
-
-		if ( isset( $_POST['_bs_custom_mail_voucher_max_price'] ) ) {
-			update_post_meta( $post_id, '_bs_custom_mail_voucher_max_price', floatval( $_POST['_bs_custom_mail_voucher_max_price'] ) );
+		if ( isset( $_POST['_bs_custom_mail_voucher_min_price'], $_POST['_bs_custom_mail_voucher_max_price'] ) ) {
+			$min = max( 0.01, floatval( $_POST['_bs_custom_mail_voucher_min_price'] ) );
+			$max = max( 0.01, floatval( $_POST['_bs_custom_mail_voucher_max_price'] ) );
+			if ( $min > $max ) {
+				$min = $max;
+			}
+			update_post_meta( $post_id, '_bs_custom_mail_voucher_min_price', $min );
+			update_post_meta( $post_id, '_bs_custom_mail_voucher_max_price', $max );
 		}
 	}
 

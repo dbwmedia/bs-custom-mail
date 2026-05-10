@@ -224,7 +224,7 @@ class Bs_Custom_Mail_Email_Sender {
 		$message = $this->build_email_body( $template, $order, $product, $attachment_data, $extra );
 
 		// Set headers
-		$from_name  = get_option( 'bs_custom_mail_from_name', get_bloginfo( 'name' ) );
+		$from_name  = str_replace( array( "\r", "\n" ), '', get_option( 'bs_custom_mail_from_name', get_bloginfo( 'name' ) ) );
 		$from_email = get_option( 'bs_custom_mail_from_email', '' );
 		if ( empty( $from_email ) || ! is_email( $from_email ) ) {
 			$from_email = get_option( 'admin_email' );
@@ -685,7 +685,7 @@ class Bs_Custom_Mail_Email_Sender {
 </html>';
 
 		// Set headers
-		$from_name  = get_option( 'bs_custom_mail_from_name', get_bloginfo( 'name' ) );
+		$from_name  = str_replace( array( "\r", "\n" ), '', get_option( 'bs_custom_mail_from_name', get_bloginfo( 'name' ) ) );
 		$from_email = get_option( 'bs_custom_mail_from_email', '' );
 		if ( empty( $from_email ) || ! is_email( $from_email ) ) {
 			$from_email = get_option( 'admin_email' );
@@ -886,7 +886,7 @@ class Bs_Custom_Mail_Email_Sender {
 </html>';
 
 		// Set headers
-		$from_name = get_option( 'bs_custom_mail_from_name', get_bloginfo( 'name' ) );
+		$from_name = str_replace( array( "\r", "\n" ), '', get_option( 'bs_custom_mail_from_name', get_bloginfo( 'name' ) ) );
 		$from_email = get_option( 'bs_custom_mail_from_email', get_option( 'admin_email' ) );
 
 		$headers = array(
