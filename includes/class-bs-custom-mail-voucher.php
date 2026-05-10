@@ -467,8 +467,23 @@ class Bs_Custom_Mail_Voucher {
 			// Use fixed price value
 			$cart_item_data['bs_voucher_value'] = floatval( $fixed_price_value );
 		} elseif ( isset( $_POST['bs_voucher_value'] ) ) {
-			// Use user-entered value
-			$cart_item_data['bs_voucher_value'] = floatval( sanitize_text_field( $_POST['bs_voucher_value'] ) );
+			$value = floatval( sanitize_text_field( $_POST['bs_voucher_value'] ) );
+			$min   = floatval( get_post_meta( $product_id, '_bs_custom_mail_voucher_min_price', true ) ?: 10 );
+			$max   = floatval( get_post_meta( $product_id, '_bs_custom_mail_voucher_max_price', true ) ?: 1000 );
+
+			if ( $value < $min || $value > $max ) {
+				wc_add_notice(
+					sprintf(
+						__( 'Bitte gib einen Gutscheinwert zwischen %s und %s ein.', 'bs-custom-mail' ),
+						wc_price( $min ),
+						wc_price( $max )
+					),
+					'error'
+				);
+				return $cart_item_data;
+			}
+
+			$cart_item_data['bs_voucher_value'] = $value;
 		}
 
 		if ( isset( $_POST['bs_voucher_recipient'] ) ) {
