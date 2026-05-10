@@ -580,7 +580,7 @@ class Bs_Custom_Mail_Voucher {
 
 		$generated_vouchers = array();
 
-		foreach ( $order->get_items() as $item_id => $item ) {
+		foreach ( $order->get_items( 'line_item' ) as $item_id => $item ) {
 			$product_id = $item->get_product_id();
 
 			if ( get_post_meta( $product_id, '_bs_custom_mail_voucher', true ) !== 'yes' ) {

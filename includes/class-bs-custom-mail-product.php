@@ -555,10 +555,19 @@ class Bs_Custom_Mail_Product {
 	/**
 	 * Save product meta data.
 	 *
+	 * Accepts both a plain post ID (save_post) and a WC_Product object
+	 * (woocommerce_admin_process_product_object).
+	 *
 	 * @since    1.0.0
-	 * @param    int    $post_id    Product ID.
+	 * @param    int|WC_Product    $post_id    Product ID or WC_Product object.
 	 */
 	public function save_product_meta( $post_id ) {
+		if ( is_object( $post_id ) && method_exists( $post_id, 'get_id' ) ) {
+			$post_id = $post_id->get_id();
+		}
+
+		$post_id = (int) $post_id;
+
 		// Check if this is an autosave
 		if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
 			return;

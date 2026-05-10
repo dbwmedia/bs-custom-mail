@@ -48,16 +48,23 @@ export function TemplateEditor( { mode, templateKey, onNavigate }: TemplateEdito
 	const [ testEmail, setTestEmail ] = useState( '' );
 	const [ isSendingTest, setIsSendingTest ] = useState( false );
 	const [ selectedDefaultTemplate, setSelectedDefaultTemplate ] = useState( '' );
+	const [ templateNotFound, setTemplateNotFound ] = useState( false );
 
 	// Load existing template data when editing
 	useEffect( () => {
 		if ( mode === 'edit' && templateKey ) {
+			if ( isTemplatesLoading ) {
+				return;
+			}
 			const existingTemplate = templates.find( ( t ) => t.template_key === templateKey );
 			if ( existingTemplate ) {
 				setTemplate( existingTemplate );
+				setTemplateNotFound( false );
+			} else {
+				setTemplateNotFound( true );
 			}
 		}
-	}, [ mode, templateKey, templates ] );
+	}, [ mode, templateKey, templates, isTemplatesLoading ] );
 
 	// Load default template when selected
 	useEffect( () => {
@@ -181,6 +188,23 @@ export function TemplateEditor( { mode, templateKey, onNavigate }: TemplateEdito
 		);
 	}
 
+	// Template key from URL does not match any DB record
+	if ( mode === 'edit' && templateNotFound ) {
+		return (
+			<div style={ { textAlign: 'center', padding: '48px 32px' } }>
+				<p style={ { fontSize: '16px', color: '#6b7280', marginBottom: '24px' } }>
+					{ __( 'Das Template wurde nicht gefunden.', 'bs-custom-mail' ) }
+					{ templateKey && (
+						<>{ ' ' }<code style={ { background: '#f3f4f6', padding: '2px 6px', borderRadius: '4px' } }>{ templateKey }</code></>
+					) }
+				</p>
+				<Button variant="secondary" onClick={ () => onNavigate( 'list' ) }>
+					{ __( 'Zurück zur Liste', 'bs-custom-mail' ) }
+				</Button>
+			</div>
+		);
+	}
+
 	const defaultTemplateOptions = [
 		{ value: '', label: __( '-- Vorlage auswählen --', 'bs-custom-mail' ) },
 		...defaultTemplates.map( ( t ) => ( { 
@@ -251,7 +275,7 @@ export function TemplateEditor( { mode, templateKey, onNavigate }: TemplateEdito
 								<TextControl
 									label={ __( 'Template Key *', 'bs-custom-mail' ) }
 									help={ __(
-										'Eindeutiger Identifikator (z.B. sbf_see, gutschein). Nur Kleinbuchstaben, Zahlen und Unterstriche. Wird für die Zuordnung zu Produkten verwendet.',
+										'Eindeutiger Identifikator (z.B. sbf_see, gutschein). Nur Kleinbuchstaben, Zahlen, Unterstriche und Bindestriche. Groß­buchstaben und Leerzeichen werden automatisch angepasst.',
 										'bs-custom-mail'
 									) }
 									value={ template.template_key }

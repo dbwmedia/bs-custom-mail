@@ -429,9 +429,9 @@ class Bs_Custom_Mail_REST_API {
 			'template_key'  => array(
 				'required'          => true,
 				'type'              => 'string',
-				'sanitize_callback' => 'sanitize_text_field',
+				'sanitize_callback' => 'sanitize_key',
 				'validate_callback' => function( $param ) {
-					return preg_match( '/^[a-zA-Z0-9_\s-]+$/', $param );
+					return (bool) preg_match( '/^[a-z0-9_-]+$/', sanitize_key( $param ) );
 				},
 			),
 			'template_name' => array(

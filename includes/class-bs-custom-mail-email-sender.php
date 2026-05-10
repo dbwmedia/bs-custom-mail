@@ -80,8 +80,9 @@ class Bs_Custom_Mail_Email_Sender {
 			return;
 		}
 
-		// Loop through order items
-		$items = $order->get_items();
+		// Loop through order items — explicitly request line items so shipping/fee
+		// items from other plugins never enter the loop without get_product().
+		$items = $order->get_items( 'line_item' );
 		$sent_templates = array();
 
 		foreach ( $items as $item ) {
