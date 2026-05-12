@@ -14,6 +14,11 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 	exit;
 }
 
+// Daten standardmaessig erhalten. Loeschung nur wenn explizit opt-in.
+if ( ! get_option( 'bs_custom_mail_delete_data_on_uninstall', false ) ) {
+	return;
+}
+
 // Delete database tables
 global $wpdb;
 
