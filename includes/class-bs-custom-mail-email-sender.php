@@ -894,9 +894,18 @@ class Bs_Custom_Mail_Email_Sender {
 			'From: ' . $from_name . ' <' . $from_email . '>',
 		);
 
-		// Prepare attachments - get PDF path from URL
+		// Prepare attachments - prefer the direct filesystem path, fall back to the
+		// URL->path roundtrip for backwards compatibility. The roundtrip can fail
+		// silently when wp_upload_dir() returns inconsistent values between callers
+		// (SSL plugin, locale switch) or when PHP's stat cache holds a stale
+		// negative result from a hook that ran before the PDF was flushed to disk.
 		$attachments = array();
-		if ( ! empty( $pdf_url ) ) {
+		clearstatcache();
+
+		$pdf_path_direct = isset( $voucher_data['pdf_path'] ) ? $voucher_data['pdf_path'] : '';
+		if ( $pdf_path_direct && file_exists( $pdf_path_direct ) ) {
+			$attachments[] = $pdf_path_direct;
+		} elseif ( ! empty( $pdf_url ) ) {
 			$wp_upload = wp_upload_dir();
 			$upload_dir = $wp_upload['basedir'] . '/bs-vouchers/';
 			$upload_url = $wp_upload['baseurl'] . '/bs-vouchers/';
