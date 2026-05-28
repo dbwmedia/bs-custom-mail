@@ -220,6 +220,38 @@ class Bs_Custom_Mail_Email_Sender {
 		$attachments     = array_merge( $template_attachments, $product_attachments );
 		$attachment_data = array_merge( $template_attachment_data, $product_attachment_data );
 
+		// Attach PDF invoice from "PDF Invoices & Packing Slips for WooCommerce" if available.
+		$tmp_invoice_path = '';
+		try {
+			if ( function_exists( 'wcpdf_get_document' ) ) {
+				$invoice = wcpdf_get_document( 'invoice', $order );
+				if ( $invoice && $invoice->exists() ) {
+					$pdf_path = method_exists( $invoice, 'get_pdf_path' ) ? $invoice->get_pdf_path() : '';
+					if ( $pdf_path && file_exists( $pdf_path ) ) {
+						$attachments[] = $pdf_path;
+					} else {
+						// Generate PDF to a temporary file.
+						$tmp_dir = trailingslashit( wp_upload_dir()['basedir'] ) . 'wpo_wcpdf_tmp/';
+						if ( ! is_dir( $tmp_dir ) ) {
+							wp_mkdir_p( $tmp_dir );
+						}
+						$tmp_invoice_path = $tmp_dir . 'invoice-' . $order->get_id() . '.pdf';
+						$pdf_content      = $invoice->get_pdf();
+						if ( $pdf_content ) {
+							// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+							file_put_contents( $tmp_invoice_path, $pdf_content );
+							if ( file_exists( $tmp_invoice_path ) ) {
+								$attachments[] = $tmp_invoice_path;
+							}
+						}
+					}
+				}
+			}
+		} catch ( \Exception $e ) {
+			// Invoice generation failed — send email without invoice attachment.
+			$tmp_invoice_path = '';
+		}
+
 		// Build email body with attachments section
 		$message = $this->build_email_body( $template, $order, $product, $attachment_data, $extra );
 
@@ -248,6 +280,12 @@ class Bs_Custom_Mail_Email_Sender {
 					wp_mail( $email, $cc_subject, $message, $headers, $attachments );
 				}
 			}
+		}
+
+		// Clean up temporary invoice PDF after all emails have been sent.
+		if ( $tmp_invoice_path && file_exists( $tmp_invoice_path ) ) {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink
+			unlink( $tmp_invoice_path );
 		}
 
 		// Log statistic
