@@ -2,7 +2,7 @@
  * Enhanced PDF Template Editor
  * Features: Drag & Drop fields, Colorpicker background, Paper format selection
  */
-import { useState, useEffect, useCallback } from '@wordpress/element'
+import { useState, useEffect, useCallback, useRef } from '@wordpress/element'
 import { __ } from '@wordpress/i18n'
 import apiFetch from '@wordpress/api-fetch'
 import { PDFTemplate, PDFTemplateConfig, PDFFieldDefinition } from '../types'
@@ -22,23 +22,61 @@ const PAPER_FORMATS = {
   A6: { width: 105, height: 148 },
 }
 
+// Markenfarbe (Default-Textfarbe). Muss zum Renderer-Default passen
+// (Bs_Custom_Mail_PDF_Generator::$default_text_color = rgb(15,61,92)).
+const BRAND_NAVY = '#0f3d5c'
+
+// Ausrichtung pro Feld — identisch zum Renderer (draw_field):
+// Betrag/Empfaenger zentriert auf x, Datum/Code/Adressant linksbuendig ab x.
+const FIELD_ALIGN: Record<string, 'C' | 'L'> = {
+  wert: 'C',
+  name: 'C',
+  notiz: 'C',
+  code: 'L',
+  expiry: 'L',
+  adressant: 'L',
+}
+
+// Beispieltexte fuer die WYSIWYG-Vorschau (zeigen wie das PDF aussieht).
+const FIELD_SAMPLE: Record<string, string> = {
+  wert: '320,00 EUR',
+  code: 'WERT-A1B2C3D4',
+  name: 'Max Mustermann',
+  expiry: '27.05.2029',
+  adressant: 'Von: Max',
+  notiz: 'Viel Spaß!',
+}
+
+// Schrift pro Feld — passend zu den FPDF-Corefonts (Arial / Courier).
+const FIELD_FONT: Record<string, { family: string; weight: number }> = {
+  wert: { family: 'Arial, Helvetica, sans-serif', weight: 700 },
+  code: { family: '"Courier New", Courier, monospace', weight: 700 },
+  name: { family: 'Arial, Helvetica, sans-serif', weight: 400 },
+  expiry: { family: 'Arial, Helvetica, sans-serif', weight: 400 },
+  adressant: { family: 'Arial, Helvetica, sans-serif', weight: 400 },
+  notiz: { family: 'Arial, Helvetica, sans-serif', weight: 400 },
+}
+
+// pt -> mm (FPDF-Schriftgroessen sind in Punkt).
+const PT_TO_MM = 0.3528
+
 // Available fields configuration
 const AVAILABLE_FIELDS: PDFFieldDefinition[] = [
-  { key: 'wert', label: 'Gutscheinwert', color: '#059669', defaultPosition: { x: 105, y: 100, fontSize: 28 } },
-  { key: 'code', label: 'Gutscheincode', color: '#1e40af', defaultPosition: { x: 105, y: 140, fontSize: 18 } },
-  { key: 'name', label: 'Empfänger', color: '#374151', defaultPosition: { x: 105, y: 180, fontSize: 16 } },
-  { key: 'expiry', label: 'Ablaufdatum', color: '#6b7280', defaultPosition: { x: 105, y: 220, fontSize: 14 } },
-  { key: 'adressant', label: 'Adressant', color: '#7c3aed', defaultPosition: { x: 20, y: 40, fontSize: 12 }, optional: true },
-  { key: 'notiz', label: 'Notiz', color: '#dc2626', defaultPosition: { x: 105, y: 260, fontSize: 12 }, optional: true },
+  { key: 'wert', label: 'Gutscheinwert', color: BRAND_NAVY, defaultPosition: { x: 105, y: 100, fontSize: 28 } },
+  { key: 'code', label: 'Gutscheincode', color: BRAND_NAVY, defaultPosition: { x: 96, y: 140, fontSize: 22 } },
+  { key: 'name', label: 'Empfänger', color: BRAND_NAVY, defaultPosition: { x: 105, y: 180, fontSize: 16 } },
+  { key: 'expiry', label: 'Ablaufdatum', color: BRAND_NAVY, defaultPosition: { x: 96, y: 220, fontSize: 22 } },
+  { key: 'adressant', label: 'Adressant', color: BRAND_NAVY, defaultPosition: { x: 20, y: 40, fontSize: 12 }, optional: true },
+  { key: 'notiz', label: 'Notiz', color: BRAND_NAVY, defaultPosition: { x: 105, y: 260, fontSize: 12 }, optional: true },
 ]
 
 const defaultConfig: PDFTemplateConfig = {
-  wert: { x: 105, y: 100, fontSize: 28, color: '#059669' },
-  code: { x: 105, y: 140, fontSize: 18, color: '#1e40af' },
-  name: { x: 105, y: 180, fontSize: 16, color: '#374151' },
-  expiry: { x: 105, y: 220, fontSize: 14, color: '#6b7280' },
-  adressant: { x: 20, y: 40, fontSize: 12, color: '#7c3aed' },
-  notiz: { x: 105, y: 260, fontSize: 12, color: '#dc2626' },
+  wert: { x: 105, y: 100, fontSize: 28, color: BRAND_NAVY },
+  code: { x: 96, y: 140, fontSize: 22, color: BRAND_NAVY },
+  name: { x: 105, y: 180, fontSize: 16, color: BRAND_NAVY },
+  expiry: { x: 96, y: 220, fontSize: 22, color: BRAND_NAVY },
+  adressant: { x: 20, y: 40, fontSize: 12, color: BRAND_NAVY },
+  notiz: { x: 105, y: 260, fontSize: 12, color: BRAND_NAVY },
 }
 
 const defaultActiveFields = ['wert', 'code', 'name', 'expiry']
@@ -63,6 +101,20 @@ export function PDFTemplateEditor({
   const [isDragging, setIsDragging] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState<'fields' | 'settings'>('fields')
+  const canvasRef = useRef<HTMLDivElement>(null)
+  const [canvasPx, setCanvasPx] = useState(0)
+
+  // Canvas-Pixelbreite messen, damit pt-Schriftgroessen massstabsgetreu
+  // (wie im PDF) als Pixel dargestellt werden koennen.
+  useEffect(() => {
+    const el = canvasRef.current
+    if (!el) return
+    const update = () => setCanvasPx(el.offsetWidth)
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   // Load template data
   useEffect(() => {
@@ -295,6 +347,7 @@ export function PDFTemplateEditor({
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div
           id="pdf-canvas"
+          ref={canvasRef}
           style={{
             aspectRatio: `${canvasDims.width}/${canvasDims.height}`,
             background: backgroundType === 'color' ? backgroundColor : '#fff',
@@ -338,40 +391,46 @@ export function PDFTemplateEditor({
             </div>
           )}
 
-          {/* Draggable Fields */}
+          {/* Draggable Fields — WYSIWYG: echter Text, Farbe, Groesse, Ausrichtung wie im PDF */}
           {activeFields.map((fieldKey) => {
             const fieldDef = getFieldDef(fieldKey)
             const fieldConfig = config[fieldKey as keyof PDFTemplateConfig]
             if (!fieldDef || !fieldConfig) return null
 
-            const fieldColor = fieldConfig.color || fieldDef.color
+            const fieldColor = fieldConfig.color || BRAND_NAVY
+            const align = FIELD_ALIGN[fieldKey] || 'C'
+            const font = FIELD_FONT[fieldKey] || { family: 'Arial, Helvetica, sans-serif', weight: 400 }
+            const sample = FIELD_SAMPLE[fieldKey] || fieldDef.label
+            const fontPt = fieldConfig.fontSize || fieldDef.defaultPosition.fontSize || 18
+            // pt -> mm -> Canvas-Pixel (massstabsgetreu zum PDF)
+            const pxPerMm = canvasPx > 0 ? canvasPx / canvasDims.width : 0
+            const fontPx = pxPerMm > 0 ? fontPt * PT_TO_MM * pxPerMm : fontPt
 
             return (
               <div
                 key={fieldKey}
+                title={fieldDef.label}
                 style={{
                   position: 'absolute',
                   left: `${(fieldConfig.x / canvasDims.width) * 100}%`,
                   top: `${(fieldConfig.y / canvasDims.height) * 100}%`,
-                  transform: 'translate(-50%, -50%)',
-                  padding: '8px 16px',
-                  background: isDragging === fieldKey ? fieldColor : '#fff',
-                  color: isDragging === fieldKey ? '#fff' : fieldColor,
-                  border: `2px solid ${fieldColor}`,
-                  borderRadius: '8px',
-                  cursor: 'move',
-                  fontSize: `${fieldConfig.fontSize || fieldDef.defaultPosition.fontSize}px`,
-                  fontWeight: 600,
+                  transform: align === 'C' ? 'translate(-50%, -50%)' : 'translate(0, -50%)',
+                  color: fieldColor,
+                  fontSize: `${fontPx}px`,
+                  fontFamily: font.family,
+                  fontWeight: font.weight,
+                  lineHeight: 1,
                   whiteSpace: 'nowrap',
-                  boxShadow: isDragging === fieldKey
-                    ? '0 8px 25px rgba(0,0,0,0.25)'
-                    : '0 2px 8px rgba(0,0,0,0.1)',
+                  cursor: 'move',
+                  userSelect: 'none',
+                  padding: '2px 4px',
+                  outline: isDragging === fieldKey ? '1px dashed rgba(15,61,92,0.6)' : '1px solid transparent',
+                  outlineOffset: '2px',
                   zIndex: isDragging === fieldKey ? 100 : 10,
-                  transition: isDragging === fieldKey ? 'none' : 'box-shadow 0.2s',
                 }}
                 onMouseDown={handleMouseDown(fieldKey)}
               >
-                {fieldDef.label}
+                {sample}
               </div>
             )
           })}

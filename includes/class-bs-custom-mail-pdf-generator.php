@@ -206,12 +206,6 @@ class Bs_Custom_Mail_PDF_Generator {
 			}
 		}
 
-		// Footer
-		$pdf->SetFont( 'Arial', '', 8 );
-		$pdf->SetTextColor( 156, 163, 175 );
-		$pdf->SetY( $page_height - 17 );
-		$pdf->Cell( 0, 10, 'Bootsschule Berlin Koepenick - Gruenauer Strasse 3, 12557 Berlin', 0, 0, 'C' );
-
 		// Save PDF
 		$filename = 'gutschein-' . sanitize_file_name( $data['code'] ) . '-' . time() . '.pdf';
 		$filepath = $this->upload_dir . $filename;
@@ -292,94 +286,89 @@ class Bs_Custom_Mail_PDF_Generator {
 	}
 
 	/**
-	 * Render value field.
+	 * Default-Textfarbe (Markenfarbe Navy) wenn das Template keine Farbe vorgibt.
+	 *
+	 * @since    2.3.0
+	 * @access   private
+	 * @var      array
+	 */
+	private $default_text_color = array( 'r' => 15, 'g' => 61, 'b' => 92 );
+
+	/**
+	 * Zeichnet Text am Ankerpunkt (x, y).
+	 *
+	 * Der Editor speichert (x, y) als Mittelpunkt des Feldes. Bei align 'C' wird
+	 * der Text horizontal um x zentriert, bei 'L' beginnt die linke Textkante an x.
+	 * Vertikal wird der Text immer um y zentriert (Stringbreite via GetStringWidth).
+	 *
+	 * @since    2.3.0
+	 * @param    FPDF      $pdf         PDF object.
+	 * @param    string    $text        Bereits Latin-1-kodierter Text.
+	 * @param    float     $x           Ankerpunkt X (mm).
+	 * @param    float     $y           Mittelpunkt Y (mm).
+	 * @param    string    $family      FPDF-Fontfamilie.
+	 * @param    string    $style       FPDF-Fontstil ('', 'B', ...).
+	 * @param    int       $font_size   Schriftgroesse (pt).
+	 * @param    string    $align       'C' zentriert auf x, 'L' linke Kante an x.
+	 * @param    string    $color       Hex-Farbe oder null fuer Default.
+	 */
+	private function draw_field( $pdf, $text, $x, $y, $family, $style, $font_size, $align = 'C', $color = null ) {
+		$pdf->SetFont( $family, $style, $font_size );
+		$rgb = $color ? $this->hex_to_rgb( $color ) : $this->default_text_color;
+		$pdf->SetTextColor( $rgb['r'], $rgb['g'], $rgb['b'] );
+
+		$w    = $pdf->GetStringWidth( $text );
+		$h    = $font_size * 0.3528; // pt -> mm
+		$left = ( $align === 'C' ) ? $x - ( $w / 2 ) : $x;
+		$pdf->SetXY( $left, $y - ( $h / 2 ) );
+		$pdf->Cell( $w, $h, $text, 0, 0, 'L' );
+	}
+
+	/**
+	 * Render value field (grosser Betrag, zentriert).
 	 *
 	 * @since    2.1.0
-	 * @param    FPDF      $pdf        PDF object.
-	 * @param    float     $value      Value to display.
-	 * @param    float     $x          X position.
-	 * @param    float     $y          Y position.
-	 * @param    int       $font_size  Font size.
 	 */
 	private function render_value_field( $pdf, $value, $x, $y, $font_size, $color = null ) {
-		$pdf->SetFont( 'Arial', 'B', $font_size );
-		$rgb = $color ? $this->hex_to_rgb( $color ) : array( 'r' => 5, 'g' => 150, 'b' => 105 );
-		$pdf->SetTextColor( $rgb['r'], $rgb['g'], $rgb['b'] );
-		$pdf->SetXY( $x, $y );
-		$pdf->Cell( 0, 10, $this->format_price( $value ), 0, 0, 'C' );
+		$this->draw_field( $pdf, $this->format_price( $value ), $x, $y, 'Arial', 'B', $font_size, 'C', $color );
 	}
 
 	/**
-	 * Render code field.
+	 * Render code field (linksbuendig).
 	 *
 	 * @since    2.1.0
-	 * @param    FPDF      $pdf        PDF object.
-	 * @param    string    $code       Code to display.
-	 * @param    float     $x          X position.
-	 * @param    float     $y          Y position.
-	 * @param    int       $font_size  Font size.
 	 */
 	private function render_code_field( $pdf, $code, $x, $y, $font_size, $color = null ) {
-		$pdf->SetFont( 'Courier', 'B', $font_size );
-		$rgb = $color ? $this->hex_to_rgb( $color ) : array( 'r' => 30, 'g' => 58, 'b' => 138 );
-		$pdf->SetTextColor( $rgb['r'], $rgb['g'], $rgb['b'] );
-		$pdf->SetXY( $x, $y );
-		$pdf->Cell( 0, 10, strtoupper( $code ), 0, 0, 'C' );
+		$this->draw_field( $pdf, strtoupper( $code ), $x, $y, 'Courier', 'B', $font_size, 'L', $color );
 	}
 
 	/**
-	 * Render name field.
+	 * Render name field (zentriert).
 	 *
 	 * @since    2.1.0
-	 * @param    FPDF      $pdf        PDF object.
-	 * @param    string    $name       Name to display.
-	 * @param    float     $x          X position.
-	 * @param    float     $y          Y position.
-	 * @param    int       $font_size  Font size.
 	 */
 	private function render_name_field( $pdf, $name, $x, $y, $font_size, $color = null ) {
-		$pdf->SetFont( 'Arial', '', $font_size );
-		$rgb = $color ? $this->hex_to_rgb( $color ) : array( 'r' => 55, 'g' => 65, 'b' => 81 );
-		$pdf->SetTextColor( $rgb['r'], $rgb['g'], $rgb['b'] );
-		$pdf->SetXY( $x, $y );
-		$pdf->Cell( 0, 10, $this->sanitize_text( $name ), 0, 0, 'C' );
+		$this->draw_field( $pdf, $this->sanitize_text( $name ), $x, $y, 'Arial', '', $font_size, 'C', $color );
 	}
 
 	/**
-	 * Render expiry field.
+	 * Render expiry field (linksbuendig).
+	 *
+	 * Nur das Datum — das Label ("Gueltig bis") ist Teil des Template-Designs.
 	 *
 	 * @since    2.1.0
-	 * @param    FPDF      $pdf        PDF object.
-	 * @param    string    $expiry     Expiry date to display.
-	 * @param    float     $x          X position.
-	 * @param    float     $y          Y position.
-	 * @param    int       $font_size  Font size.
 	 */
 	private function render_expiry_field( $pdf, $expiry, $x, $y, $font_size, $color = null ) {
-		$pdf->SetFont( 'Arial', '', $font_size );
-		$rgb = $color ? $this->hex_to_rgb( $color ) : array( 'r' => 107, 'g' => 114, 'b' => 128 );
-		$pdf->SetTextColor( $rgb['r'], $rgb['g'], $rgb['b'] );
-		$pdf->SetXY( $x, $y );
-		$pdf->Cell( 0, 10, __( 'Gueltig bis:', 'bs-custom-mail' ) . ' ' . $expiry, 0, 0, 'C' );
+		$this->draw_field( $pdf, $this->sanitize_text( $expiry ), $x, $y, 'Arial', '', $font_size, 'L', $color );
 	}
 
 	/**
-	 * Render generic text field.
+	 * Render generic text field (linksbuendig).
 	 *
 	 * @since    2.1.0
-	 * @param    FPDF      $pdf        PDF object.
-	 * @param    string    $text       Text to display.
-	 * @param    float     $x          X position.
-	 * @param    float     $y          Y position.
-	 * @param    int       $font_size  Font size.
-	 * @param    string    $align      Alignment (L, C, R).
 	 */
-	private function render_text_field( $pdf, $text, $x, $y, $font_size, $align = 'C', $color = null ) {
-		$pdf->SetFont( 'Arial', '', $font_size );
-		$rgb = $color ? $this->hex_to_rgb( $color ) : array( 'r' => 55, 'g' => 65, 'b' => 81 );
-		$pdf->SetTextColor( $rgb['r'], $rgb['g'], $rgb['b'] );
-		$pdf->SetXY( $x, $y );
-		$pdf->Cell( 0, 10, $this->sanitize_text( $text ), 0, 0, $align );
+	private function render_text_field( $pdf, $text, $x, $y, $font_size, $align = 'L', $color = null ) {
+		$this->draw_field( $pdf, $this->sanitize_text( $text ), $x, $y, 'Arial', '', $font_size, $align, $color );
 	}
 
 	/**
@@ -419,12 +408,8 @@ class Bs_Custom_Mail_PDF_Generator {
 	private function sanitize_text( $text ) {
 		$text = sanitize_text_field( $text );
 
-		// Replace German umlauts for FPDF
-		$search = array( 'Ä', 'Ö', 'Ü', 'ä', 'ö', 'ü', 'ß' );
-		$replace = array( 'Ae', 'Oe', 'Ue', 'ae', 'oe', 'ue', 'ss' );
-		$text = str_replace( $search, $replace, $text );
-
-		// Convert to Latin-1
+		// FPDF-Corefonts erwarten Latin-1. Echte Umlaute bleiben erhalten
+		// (ae/oe/ue-Ersatz nur als Fallback fuer Zeichen ausserhalb Latin-1).
 		$text = iconv( 'UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $text );
 
 		return $text;
