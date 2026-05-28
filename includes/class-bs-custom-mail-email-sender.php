@@ -222,28 +222,25 @@ class Bs_Custom_Mail_Email_Sender {
 		$attachment_data   = array_merge( $template_attachment_data, $product_attachment_data );
 
 		// Attach PDF invoice from "PDF Invoices & Packing Slips for WooCommerce" if available.
+		// Note: exists() is intentionally NOT checked — for new orders the invoice has
+		// never been generated yet, so exists() would return false and skip attachment.
+		// Instead we always generate the PDF on-the-fly via get_pdf().
 		$tmp_invoice_path = '';
 		try {
 			if ( function_exists( 'wcpdf_get_document' ) ) {
 				$invoice = wcpdf_get_document( 'invoice', $order );
-				if ( $invoice && $invoice->exists() ) {
-					$pdf_path = method_exists( $invoice, 'get_pdf_path' ) ? $invoice->get_pdf_path() : '';
-					if ( $pdf_path && file_exists( $pdf_path ) ) {
-						$attachments[] = $pdf_path;
-					} else {
-						// Generate PDF to a temporary file.
-						$tmp_dir = trailingslashit( wp_upload_dir()['basedir'] ) . 'wpo_wcpdf_tmp/';
-						if ( ! is_dir( $tmp_dir ) ) {
-							wp_mkdir_p( $tmp_dir );
-						}
-						$tmp_invoice_path = $tmp_dir . 'invoice-' . $order->get_id() . '.pdf';
-						$pdf_content      = $invoice->get_pdf();
-						if ( $pdf_content ) {
-							// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
-							file_put_contents( $tmp_invoice_path, $pdf_content );
-							if ( file_exists( $tmp_invoice_path ) ) {
-								$attachments[] = $tmp_invoice_path;
-							}
+				if ( $invoice ) {
+					$tmp_dir = trailingslashit( wp_upload_dir()['basedir'] ) . 'wpo_wcpdf_tmp/';
+					if ( ! is_dir( $tmp_dir ) ) {
+						wp_mkdir_p( $tmp_dir );
+					}
+					$tmp_invoice_path = $tmp_dir . 'invoice-' . $order->get_id() . '.pdf';
+					$pdf_content      = $invoice->get_pdf();
+					if ( $pdf_content ) {
+						// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+						file_put_contents( $tmp_invoice_path, $pdf_content );
+						if ( file_exists( $tmp_invoice_path ) ) {
+							$attachments[] = $tmp_invoice_path;
 						}
 					}
 				}
