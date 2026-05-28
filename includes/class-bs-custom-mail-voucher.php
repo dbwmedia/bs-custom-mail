@@ -804,9 +804,10 @@ class Bs_Custom_Mail_Voucher {
 
 		$sender = new Bs_Custom_Mail_Email_Sender( 'bs-custom-mail', $this->version );
 
-		// Prepare voucher data for email.
-		// Pass the absolute filesystem `pdf_path` alongside `pdf_url` so the email
-		// sender can attach the PDF directly without round-tripping through a URL.
+		// Prepare voucher data for email
+		// Patched 2026-05-27 (Robin Herbeck, DBW Media) — siehe Projekt/julius.md.
+		// `pdf_path` als direkter Filesystem-Pfad zusaetzlich zu `pdf_url` mitgegeben,
+		// damit der Mail-Sender den Roundtrip URL->Pfad via str_replace nicht braucht.
 		$voucher_data = array(
 			'gutschein_code' => $voucher_info['code'],
 			'gutschein_wert' => wp_strip_all_tags( wc_price( $voucher_info['value'] ) ),

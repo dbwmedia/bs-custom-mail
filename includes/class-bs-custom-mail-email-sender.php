@@ -217,40 +217,9 @@ class Bs_Custom_Mail_Email_Sender {
 		$product_attachment_data = $this->get_attachment_data_for_display( $product->get_id() );
 
 		// Combine attachments
-		$attachments     = array_merge( $template_attachments, $product_attachments );
-		$attachment_data = array_merge( $template_attachment_data, $product_attachment_data );
-
-		// Attach PDF invoice from "PDF Invoices & Packing Slips for WooCommerce" if available.
-		$tmp_invoice_path = '';
-		try {
-			if ( function_exists( 'wcpdf_get_document' ) ) {
-				$invoice = wcpdf_get_document( 'invoice', $order );
-				if ( $invoice && $invoice->exists() ) {
-					$pdf_path = method_exists( $invoice, 'get_pdf_path' ) ? $invoice->get_pdf_path() : '';
-					if ( $pdf_path && file_exists( $pdf_path ) ) {
-						$attachments[] = $pdf_path;
-					} else {
-						// Generate PDF to a temporary file.
-						$tmp_dir = trailingslashit( wp_upload_dir()['basedir'] ) . 'wpo_wcpdf_tmp/';
-						if ( ! is_dir( $tmp_dir ) ) {
-							wp_mkdir_p( $tmp_dir );
-						}
-						$tmp_invoice_path = $tmp_dir . 'invoice-' . $order->get_id() . '.pdf';
-						$pdf_content      = $invoice->get_pdf();
-						if ( $pdf_content ) {
-							// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
-							file_put_contents( $tmp_invoice_path, $pdf_content );
-							if ( file_exists( $tmp_invoice_path ) ) {
-								$attachments[] = $tmp_invoice_path;
-							}
-						}
-					}
-				}
-			}
-		} catch ( \Exception $e ) {
-			// Invoice generation failed — send email without invoice attachment.
-			$tmp_invoice_path = '';
-		}
+		$legal_attachments = $this->get_germanized_legal_attachments();
+		$attachments       = array_merge( $template_attachments, $product_attachments, $legal_attachments );
+		$attachment_data   = array_merge( $template_attachment_data, $product_attachment_data );
 
 		// Build email body with attachments section
 		$message = $this->build_email_body( $template, $order, $product, $attachment_data, $extra );
@@ -280,12 +249,6 @@ class Bs_Custom_Mail_Email_Sender {
 					wp_mail( $email, $cc_subject, $message, $headers, $attachments );
 				}
 			}
-		}
-
-		// Clean up temporary invoice PDF after all emails have been sent.
-		if ( $tmp_invoice_path && file_exists( $tmp_invoice_path ) ) {
-			// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink
-			unlink( $tmp_invoice_path );
 		}
 
 		// Log statistic
@@ -741,6 +704,7 @@ class Bs_Custom_Mail_Email_Sender {
 		};
 		add_action( 'wp_mail_failed', $error_handler );
 
+		$attachment_files = array_merge( $attachment_files, $this->get_germanized_legal_attachments() );
 		$sent = wp_mail( $to, $subject, $body, $headers, $attachment_files );
 
 		remove_action( 'wp_mail_failed', $error_handler );
@@ -932,11 +896,10 @@ class Bs_Custom_Mail_Email_Sender {
 			'From: ' . $from_name . ' <' . $from_email . '>',
 		);
 
-		// Prepare attachments - prefer the direct filesystem path, fall back to the
-		// URL->path roundtrip for backwards compatibility. The roundtrip can fail
-		// silently when wp_upload_dir() returns inconsistent values between callers
-		// (SSL plugin, locale switch) or when PHP's stat cache holds a stale
-		// negative result from a hook that ran before the PDF was flushed to disk.
+		// Prepare attachments - direct filesystem path first, URL roundtrip as fallback.
+		// Patched 2026-05-27 (Robin Herbeck, DBW Media) — siehe Projekt/julius.md.
+		// Behebt verlorene Voucher-PDF-Anhaenge bei Original-Generierung (Race-Condition
+		// im stat-Cache oder URL/Pfad-Mismatch durch wp_upload_dir-Filter).
 		$attachments = array();
 		clearstatcache();
 
@@ -953,10 +916,45 @@ class Bs_Custom_Mail_Email_Sender {
 			}
 		}
 
+		// Append AGB/Widerruf/Datenschutz from Germanized
+		$attachments = array_merge( $attachments, $this->get_germanized_legal_attachments() );
+
 		// Send email
 		$sent = wp_mail( $to, $subject, $body, $headers, $attachments );
 
 		return $sent;
+	}
+
+	/**
+	 * Returns absolute file paths to AGB, Widerruf, Datenschutz PDFs
+	 * configured in Germanized options.
+	 *
+	 * Patched 2026-05-13 (Robin Herbeck, DBW Media) — siehe Projekt/julius.md.
+	 * Konsumiert die `woocommerce_gzd_*_pdf` Optionen die Germanized als
+	 * Mediathek-Attachment-IDs speichert und liefert sie als Pfade fuer
+	 * die `wp_mail($attachments)`-Aufrufe.
+	 *
+	 * @since 2.0.1
+	 * @return array<int, string> Vorhandene PDF-Pfade.
+	 */
+	private function get_germanized_legal_attachments() {
+		$files   = array();
+		$options = array(
+			'woocommerce_gzd_terms_pdf',
+			'woocommerce_gzd_revocation_pdf',
+			'woocommerce_gzd_data_security_pdf',
+		);
+		foreach ( $options as $option ) {
+			$attachment_id = (int) get_option( $option );
+			if ( $attachment_id <= 0 ) {
+				continue;
+			}
+			$path = get_attached_file( $attachment_id );
+			if ( $path && is_readable( $path ) ) {
+				$files[] = $path;
+			}
+		}
+		return $files;
 	}
 
 }
