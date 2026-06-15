@@ -68,16 +68,41 @@ class Bs_Custom_Mail_Email_Sender {
 			return;
 		}
 
+		// Schedule a delayed, idempotent safety-net check BEFORE attempting the
+		// immediate send. If this very request dies later (e.g. the known PPCP
+		// race condition where the checkout request aborts mid-transition), the
+		// scheduled job re-runs the send in a clean, separate request a few
+		// minutes later. If the immediate send below succeeds, the scheduled job
+		// simply finds the "already sent" flag and does nothing.
+		$this->schedule_safety_net_check( $order_id );
+
+		// Attempt the immediate send (unchanged behaviour for the normal case).
+		$this->maybe_send_order_emails( $order_id );
+	}
+
+	/**
+	 * Send all product emails for an order, guarded against double sending.
+	 *
+	 * This is the single, idempotent send routine shared by the live status
+	 * change hook, the per-order Action Scheduler safety net and the recurring
+	 * sweep. It is safe to call multiple times: the `_bs_custom_mail_sent` flag
+	 * guarantees an order is processed at most once.
+	 *
+	 * @since    2.1.0
+	 * @param    int    $order_id    Order ID.
+	 * @return   bool                True if the order's emails are sent (now or already).
+	 */
+	public function maybe_send_order_emails( $order_id ) {
 		// Get order
 		$order = wc_get_order( $order_id );
 		if ( ! $order ) {
-			return;
+			return false;
 		}
 
 		// Check if emails were already sent for this order
 		$emails_sent = get_post_meta( $order_id, '_bs_custom_mail_sent', true );
 		if ( $emails_sent ) {
-			return;
+			return true;
 		}
 
 		// Loop through order items — explicitly request line items so shipping/fee
@@ -118,6 +143,226 @@ class Bs_Custom_Mail_Email_Sender {
 			update_post_meta( $order_id, '_bs_custom_mail_sent', true );
 			update_post_meta( $order_id, '_bs_custom_mail_sent_at', current_time( 'mysql' ) );
 			update_post_meta( $order_id, '_bs_custom_mail_templates', $sent_templates );
+		}
+
+		return ! empty( $sent_templates );
+	}
+
+	/**
+	 * Schedule a one-off, idempotent safety-net check for a single order.
+	 *
+	 * Uses WooCommerce's bundled Action Scheduler when available (preferred,
+	 * because it survives a dying request and runs in a clean context), and
+	 * falls back to WP-Cron otherwise. Scheduling is skipped if a check for the
+	 * same order is already queued.
+	 *
+	 * @since    2.1.0
+	 * @param    int    $order_id    Order ID.
+	 */
+	public function schedule_safety_net_check( $order_id ) {
+		$order_id = (int) $order_id;
+		if ( ! $order_id ) {
+			return;
+		}
+
+		/**
+		 * Filter the delay (in seconds) before the per-order safety-net check runs.
+		 *
+		 * @since 2.1.0
+		 * @param int $delay Delay in seconds. Default 5 minutes.
+		 */
+		$delay = (int) apply_filters( 'bs_custom_mail_safety_net_delay', 5 * MINUTE_IN_SECONDS );
+		$args  = array( 'order_id' => $order_id );
+
+		if ( function_exists( 'as_schedule_single_action' ) && function_exists( 'as_next_scheduled_action' ) ) {
+			if ( false === as_next_scheduled_action( 'bs_custom_mail_safety_net_check', $args, 'bs-custom-mail' ) ) {
+				as_schedule_single_action( time() + $delay, 'bs_custom_mail_safety_net_check', $args, 'bs-custom-mail' );
+				$this->log( sprintf( 'Sicherheitsnetz-Check für Bestellung #%d in %d s eingeplant (Action Scheduler).', $order_id, $delay ), 'debug' );
+			}
+			return;
+		}
+
+		// Fallback: WP-Cron.
+		if ( ! wp_next_scheduled( 'bs_custom_mail_safety_net_check', array( $order_id ) ) ) {
+			wp_schedule_single_event( time() + $delay, 'bs_custom_mail_safety_net_check', array( $order_id ) );
+		}
+	}
+
+	/**
+	 * Action Scheduler / WP-Cron callback: retry sending for one order if needed.
+	 *
+	 * Idempotent. Only acts on orders that are still in the trigger status and
+	 * have not yet had their emails sent.
+	 *
+	 * @since    2.1.0
+	 * @param    int    $order_id    Order ID.
+	 */
+	public function run_safety_net_check( $order_id ) {
+		$order_id = (int) $order_id;
+		if ( ! $order_id ) {
+			return;
+		}
+
+		// Already handled — nothing to do.
+		if ( get_post_meta( $order_id, '_bs_custom_mail_sent', true ) ) {
+			return;
+		}
+
+		$order = wc_get_order( $order_id );
+		if ( ! $order ) {
+			return;
+		}
+
+		// Only recover orders that actually reached the configured trigger status.
+		$trigger_status = get_option( 'bs_custom_mail_trigger_status', 'processing' );
+		if ( $order->get_status() !== $trigger_status ) {
+			return;
+		}
+
+		if ( $this->maybe_send_order_emails( $order_id ) ) {
+			$order->add_order_note(
+				__( 'Bestätigungs-E-Mail nachträglich über das Sicherheitsnetz versendet (Erstversand beim Checkout ausgeblieben).', 'bs-custom-mail' )
+			);
+			$this->log(
+				sprintf(
+					'RECOVERED (per-order): Bestellung #%d (%s) war im Status "%s", aber ohne versendete Bestätigungsmail. Mail wurde über das verzögerte Sicherheitsnetz nachversendet. Wahrscheinliche Ursache: abgebrochener Checkout-Request (z. B. PPCP-Race-Condition).',
+					$order_id,
+					$order->get_billing_email(),
+					$trigger_status
+				),
+				'warning'
+			);
+		}
+	}
+
+	/**
+	 * Make sure the recurring safety-net sweep is scheduled. Idempotent.
+	 *
+	 * Hooked on `init`; only schedules the recurring action once. This is the
+	 * primary safety net for the observed incident: it catches orders that
+	 * reached the trigger status but for which the send was never even
+	 * attempted (e.g. because the original request died before the status
+	 * change hook could run at all).
+	 *
+	 * @since    2.1.0
+	 */
+	public function ensure_safety_net_sweep_scheduled() {
+		if ( ! function_exists( 'as_schedule_recurring_action' ) || ! function_exists( 'as_next_scheduled_action' ) ) {
+			return;
+		}
+
+		if ( false === as_next_scheduled_action( 'bs_custom_mail_safety_net_sweep', array(), 'bs-custom-mail' ) ) {
+			/**
+			 * Filter the interval (in seconds) of the recurring safety-net sweep.
+			 *
+			 * @since 2.1.0
+			 * @param int $interval Interval in seconds. Default 10 minutes.
+			 */
+			$interval = (int) apply_filters( 'bs_custom_mail_safety_net_sweep_interval', 10 * MINUTE_IN_SECONDS );
+			as_schedule_recurring_action( time() + $interval, $interval, 'bs_custom_mail_safety_net_sweep', array(), 'bs-custom-mail' );
+		}
+	}
+
+	/**
+	 * Action Scheduler callback: periodic backstop sweep.
+	 *
+	 * Finds recent orders in the trigger status whose confirmation email was
+	 * never even attempted (no statistics row at all) and sends it. Orders that
+	 * were already attempted — successfully or not (`sent` / `failed` /
+	 * `template_not_found`) — are left untouched, so the sweep never reprocesses
+	 * them and never spams the statistics table.
+	 *
+	 * @since    2.1.0
+	 */
+	public function safety_net_sweep() {
+		if ( ! function_exists( 'wc_get_orders' ) ) {
+			return;
+		}
+
+		$trigger_status = get_option( 'bs_custom_mail_trigger_status', 'processing' );
+
+		$order_ids = wc_get_orders(
+			array(
+				'status'        => $trigger_status,
+				'limit'         => 25,
+				'orderby'       => 'date',
+				'order'         => 'DESC',
+				'return'        => 'ids',
+				'date_modified' => '>' . ( time() - DAY_IN_SECONDS ),
+				'meta_query'    => array(
+					array(
+						'key'     => '_bs_custom_mail_sent',
+						'compare' => 'NOT EXISTS',
+					),
+				),
+			)
+		);
+
+		if ( empty( $order_ids ) ) {
+			return;
+		}
+
+		foreach ( $order_ids as $order_id ) {
+			// Skip orders that were already attempted (a statistics row exists).
+			if ( $this->order_has_stats_row( $order_id ) ) {
+				continue;
+			}
+
+			if ( $this->maybe_send_order_emails( $order_id ) ) {
+				$order = wc_get_order( $order_id );
+				if ( $order ) {
+					$order->add_order_note(
+						__( 'Bestätigungs-E-Mail nachträglich über den Sicherheitsnetz-Sweep versendet (Erstversand ausgeblieben).', 'bs-custom-mail' )
+					);
+				}
+				$this->log(
+					sprintf(
+						'RECOVERED (sweep): Bestellung #%d war im Status "%s" ohne jeden Sendeversuch (keine Statistik-Zeile). Bestätigungsmail wurde über den periodischen Sweep nachversendet. Wahrscheinliche Ursache: ursprünglicher Request starb vor dem Mailversand (z. B. PPCP-Race-Condition).',
+						$order_id,
+						$trigger_status
+					),
+					'warning'
+				);
+			}
+		}
+	}
+
+	/**
+	 * Whether at least one statistics row already exists for an order.
+	 *
+	 * @since    2.1.0
+	 * @param    int    $order_id    Order ID.
+	 * @return   bool
+	 */
+	private function order_has_stats_row( $order_id ) {
+		global $wpdb;
+
+		$table = $wpdb->prefix . 'bs_custom_mail_stats';
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$count = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE order_id = %d", (int) $order_id ) );
+
+		return (int) $count > 0;
+	}
+
+	/**
+	 * Write a safety-net log entry.
+	 *
+	 * Uses the WooCommerce logger — visible under WooCommerce → Status →
+	 * Protokolle, source "bs-custom-mail-safety-net" — with a WP_DEBUG fallback
+	 * to the standard PHP error log. Recoveries are logged at "warning" so they
+	 * stand out; routine events use "debug".
+	 *
+	 * @since    2.1.0
+	 * @param    string    $message    Log message.
+	 * @param    string    $level      PSR-3 level (debug, info, notice, warning, error). Default "info".
+	 */
+	private function log( $message, $level = 'info' ) {
+		if ( function_exists( 'wc_get_logger' ) ) {
+			wc_get_logger()->log( $level, $message, array( 'source' => 'bs-custom-mail-safety-net' ) );
+		} elseif ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+			error_log( '[bs-custom-mail-safety-net][' . $level . '] ' . $message );
 		}
 	}
 

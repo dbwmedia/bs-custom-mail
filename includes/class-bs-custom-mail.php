@@ -223,6 +223,13 @@ class Bs_Custom_Mail {
 		// Hook into WooCommerce order status changes
 		$this->loader->add_action( 'woocommerce_order_status_changed', $email_sender, 'handle_order_status_change', 10, 3 );
 
+		// Safety net for lost confirmation emails (e.g. PPCP race condition):
+		// a delayed per-order retry plus a periodic backstop sweep. Both reuse
+		// the same idempotent send routine, so they can never double-send.
+		$this->loader->add_action( 'bs_custom_mail_safety_net_check', $email_sender, 'run_safety_net_check', 10, 1 );
+		$this->loader->add_action( 'bs_custom_mail_safety_net_sweep', $email_sender, 'safety_net_sweep', 10, 0 );
+		$this->loader->add_action( 'init', $email_sender, 'ensure_safety_net_sweep_scheduled' );
+
 	}
 
 	/**
