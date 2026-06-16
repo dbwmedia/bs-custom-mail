@@ -112,6 +112,14 @@ class Bs_Custom_Mail_Voucher {
 		add_action( 'woocommerce_order_status_processing', array( $this, 'generate_voucher' ) );
 		add_action( 'woocommerce_order_status_completed', array( $this, 'generate_voucher' ) );
 
+		// Safety net: recover partially-generated vouchers (e.g. when the PPCP
+		// race condition aborts the request mid-generation). Idempotent — never
+		// creates a duplicate coupon. Registered at an earlier priority (5) than
+		// the email safety net (10) so the voucher code is available before any
+		// confirmation mail is (re)sent.
+		add_action( 'bs_custom_mail_safety_net_check', array( $this, 'run_safety_net_check' ), 5, 1 );
+		add_action( 'bs_custom_mail_safety_net_sweep', array( $this, 'safety_net_sweep' ), 5, 0 );
+
 		// Voucher cancellation
 		add_action( 'woocommerce_order_status_cancelled', array( $this, 'cancel_voucher' ) );
 		add_action( 'woocommerce_order_status_refunded', array( $this, 'cancel_voucher' ) );
@@ -583,19 +591,39 @@ class Bs_Custom_Mail_Voucher {
 	 * @param    int    $order_id    Order ID.
 	 */
 	public function generate_voucher( $order_id ) {
+		$this->process_order_vouchers( $order_id, 'live' );
+	}
+
+	/**
+	 * Generate (or resume generating) all vouchers for an order.
+	 *
+	 * Fully idempotent and resumable: it can be called any number of times for
+	 * the same order without ever creating a duplicate WooCommerce coupon. Each
+	 * step (coupon, PDF, DB record, email) is guarded individually, so a run
+	 * that was aborted mid-way (e.g. the PPCP race condition that kills the
+	 * checkout request during PDF generation) is completed cleanly on the next
+	 * call instead of starting over.
+	 *
+	 * @since    2.1.0
+	 * @param    int       $order_id    Order ID.
+	 * @param    string    $context     'live' (status hook) or 'safety_net' (recovery).
+	 */
+	private function process_order_vouchers( $order_id, $context = 'live' ) {
 		$order = wc_get_order( $order_id );
 
 		if ( ! $order ) {
 			return;
 		}
 
-		// Check if already generated
-		$vouchers_generated = $order->get_meta( '_bs_vouchers_generated' );
-		if ( $vouchers_generated === 'yes' ) {
+		// Already fully processed — nothing to do.
+		if ( $order->get_meta( '_bs_vouchers_generated' ) === 'yes' ) {
 			return;
 		}
 
-		$generated_vouchers = array();
+		// Preserve vouchers already recorded on an earlier (partial) run.
+		$existing_list      = $order->get_meta( '_bs_vouchers_list' );
+		$generated_vouchers = is_array( $existing_list ) ? $existing_list : array();
+		$work_done          = false;
 
 		foreach ( $order->get_items( 'line_item' ) as $item_id => $item ) {
 			$product_id = $item->get_product_id();
@@ -604,77 +632,251 @@ class Bs_Custom_Mail_Voucher {
 				continue;
 			}
 
-			$voucher_value = $item->get_meta( '_bs_voucher_value' ) ?: $item->get_total();
-			$recipient = $item->get_meta( '_bs_voucher_recipient' );
+			$voucher_value  = $item->get_meta( '_bs_voucher_value' ) ?: $item->get_total();
+			$recipient      = $item->get_meta( '_bs_voucher_recipient' );
 			$recipient_name = $item->get_meta( '_bs_voucher_recipient_name' );
-			$message = $item->get_meta( '_bs_voucher_message' );
+			$message        = $item->get_meta( '_bs_voucher_message' );
 
-			// Generate unique code
-			$coupon_code = $this->generate_unique_code();
+			// --- Step 1: determine the coupon code (idempotent) --------------
+			// The code is persisted to the order item BEFORE the WooCommerce
+			// coupon is created, and the coupon's real existence is verified via
+			// wc_get_coupon_id_by_code(). This makes EVERY crash ordering safe:
+			// neither a duplicate coupon (double money) nor a dangling code can
+			// result from a resume.
+			$coupon_code = $item->get_meta( '_bs_voucher_coupon_code' );
+			$expiry_date = $item->get_meta( '_bs_voucher_expiry' );
 
-			// Create WooCommerce coupon
-			$coupon = new WC_Coupon();
-			$coupon->set_code( $coupon_code );
-			$coupon->set_discount_type( 'fixed_cart' );
-			$coupon->set_amount( $voucher_value );
-			$coupon->set_usage_limit( 1 );
-			$coupon->set_individual_use( true );
-			$coupon->set_description( sprintf( __( 'Wertgutschein für Bestellung #%s', 'bs-custom-mail' ), $order->get_order_number() ) );
+			if ( empty( $coupon_code ) ) {
+				$coupon_code = $this->generate_unique_code();
+				$expiry_date = date( 'Y-m-d', strtotime( '+3 years' ) );
+				$item->update_meta_data( '_bs_voucher_coupon_code', $coupon_code );
+				$item->update_meta_data( '_bs_voucher_expiry', $expiry_date );
+				$item->save();
+				$work_done = true;
+			}
 
-			$expiry_date = date( 'Y-m-d', strtotime( '+3 years' ) );
-			$coupon->set_date_expires( $expiry_date );
-			$coupon->save();
+			if ( empty( $expiry_date ) ) {
+				$expiry_date = date( 'Y-m-d', strtotime( '+3 years' ) );
+			}
 
-			// Generate PDF
-			$pdf_result = $this->generate_voucher_pdf( $product_id, $coupon_code, $voucher_value, $recipient_name, $expiry_date );
+			// Create the WooCommerce coupon only if it does not already exist.
+			if ( ! wc_get_coupon_id_by_code( $coupon_code ) ) {
+				$coupon = new WC_Coupon();
+				$coupon->set_code( $coupon_code );
+				$coupon->set_discount_type( 'fixed_cart' );
+				$coupon->set_amount( $voucher_value );
+				$coupon->set_usage_limit( 1 );
+				$coupon->set_individual_use( true );
+				$coupon->set_description( sprintf( __( 'Wertgutschein für Bestellung #%s', 'bs-custom-mail' ), $order->get_order_number() ) );
+				$coupon->set_date_expires( $expiry_date );
+				$coupon->save();
+				$work_done = true;
 
-			// Save to database
-			$voucher_id = $this->save_voucher( array(
-				'order_id' => $order_id,
-				'order_item_id' => $item_id,
-				'product_id' => $product_id,
-				'voucher_code' => $coupon_code,
-				'voucher_value' => $voucher_value,
-				'recipient_email' => $recipient ?: $order->get_billing_email(),
-				'recipient_name' => $recipient_name,
-				'personal_message' => $message,
-				'pdf_path' => $pdf_result ? $pdf_result['path'] : null,
-				'expiry_date' => $expiry_date,
-				'status' => 'active'
-			) );
+				$this->log( sprintf( 'Voucher-Coupon %s für Bestellung #%d (Position %d) erstellt.', $coupon_code, $order_id, $item_id ), 'debug' );
+			}
+
+			// --- Step 2: plugin DB record + PDF (idempotent) -----------------
+			$voucher_id = $this->get_voucher_id_for_item( $item_id );
+			$pdf_path   = '';
+
+			if ( ! $voucher_id ) {
+				$pdf_result = $this->generate_voucher_pdf( $product_id, $coupon_code, $voucher_value, $recipient_name, $expiry_date );
+				$pdf_path   = $pdf_result ? $pdf_result['path'] : null;
+
+				$voucher_id = $this->save_voucher( array(
+					'order_id'         => $order_id,
+					'order_item_id'    => $item_id,
+					'product_id'       => $product_id,
+					'voucher_code'     => $coupon_code,
+					'voucher_value'    => $voucher_value,
+					'recipient_email'  => $recipient ?: $order->get_billing_email(),
+					'recipient_name'   => $recipient_name,
+					'personal_message' => $message,
+					'pdf_path'         => $pdf_path,
+					'expiry_date'      => $expiry_date,
+					'status'           => 'active',
+				) );
+				$work_done = true;
+			} else {
+				$pdf_path = $this->get_voucher_pdf_path( $voucher_id );
+			}
 
 			$voucher_info = array(
-				'id' => $voucher_id,
-				'code' => $coupon_code,
-				'value' => $voucher_value,
-				'recipient' => $recipient,
+				'id'             => $voucher_id,
+				'code'           => $coupon_code,
+				'value'          => $voucher_value,
+				'recipient'      => $recipient,
 				'recipient_name' => $recipient_name,
-				'message' => $message,
-				'pdf_path' => $pdf_result ? $pdf_result['path'] : null,
-				'expiry_date' => $expiry_date
+				'message'        => $message,
+				'pdf_path'       => $pdf_path,
+				'expiry_date'    => $expiry_date,
 			);
 
-			$generated_vouchers[] = $voucher_info;
+			// --- Step 3: voucher email (idempotent) --------------------------
+			if ( $item->get_meta( '_bs_voucher_email_sent' ) !== 'yes' ) {
+				$this->send_voucher_email( $voucher_info, $order );
+				$item->update_meta_data( '_bs_voucher_email_sent', 'yes' );
+				$item->save();
+				$work_done = true;
 
-			// Send email
-			$this->send_voucher_email( $voucher_info, $order );
-
-			// Add order note
-			$note = sprintf(
-				__( 'Wertgutschein erstellt: %s (%s)', 'bs-custom-mail' ),
-				$coupon_code,
-				wc_price( $voucher_value )
-			);
-			if ( $recipient ) {
-				$note .= sprintf( __( ' → Gesendet an: %s', 'bs-custom-mail' ), $recipient );
+				$note = sprintf(
+					__( 'Wertgutschein erstellt: %s (%s)', 'bs-custom-mail' ),
+					$coupon_code,
+					wc_price( $voucher_value )
+				);
+				if ( $recipient ) {
+					$note .= sprintf( __( ' → Gesendet an: %s', 'bs-custom-mail' ), $recipient );
+				}
+				$order->add_order_note( $note );
 			}
-			$order->add_order_note( $note );
+
+			// Keep this voucher in the order's list (dedup by code).
+			$already_listed = false;
+			foreach ( $generated_vouchers as $gv ) {
+				if ( isset( $gv['code'] ) && $gv['code'] === $coupon_code ) {
+					$already_listed = true;
+					break;
+				}
+			}
+			if ( ! $already_listed ) {
+				$generated_vouchers[] = $voucher_info;
+			}
 		}
 
+		// Mark the order as processed for vouchers (even when it has no voucher
+		// products) so the safety-net sweep stops re-scanning it. The list — read
+		// by the confirmation email for the {{Gutscheincode}} placeholder — is
+		// only written when at least one voucher exists.
+		$order->update_meta_data( '_bs_vouchers_generated', 'yes' );
 		if ( ! empty( $generated_vouchers ) ) {
-			$order->update_meta_data( '_bs_vouchers_generated', 'yes' );
 			$order->update_meta_data( '_bs_vouchers_list', $generated_vouchers );
-			$order->save();
+		}
+		$order->save();
+
+		if ( 'safety_net' === $context && $work_done ) {
+			$this->log(
+				sprintf(
+					'RECOVERED (vouchers): Bestellung #%d hatte eine unvollständige Gutschein-Generierung; fehlende Schritte (Coupon/PDF/Mail) wurden nachgeholt — ohne Coupon-Duplikat. Wahrscheinliche Ursache: abgebrochener Request (z. B. PPCP-Race-Condition).',
+					$order_id
+				),
+				'warning'
+			);
+		}
+	}
+
+	/**
+	 * Action Scheduler / WP-Cron callback: complete vouchers for one order.
+	 *
+	 * @since    2.1.0
+	 * @param    int    $order_id    Order ID.
+	 */
+	public function run_safety_net_check( $order_id ) {
+		$order_id = (int) $order_id;
+		if ( ! $order_id ) {
+			return;
+		}
+
+		$order = wc_get_order( $order_id );
+		if ( ! $order ) {
+			return;
+		}
+
+		$trigger_status = get_option( 'bs_custom_mail_trigger_status', 'processing' );
+		if ( $order->get_status() !== $trigger_status ) {
+			return;
+		}
+
+		if ( $order->get_meta( '_bs_vouchers_generated' ) === 'yes' ) {
+			return;
+		}
+
+		$this->process_order_vouchers( $order_id, 'safety_net' );
+	}
+
+	/**
+	 * Action Scheduler callback: periodic backstop sweep for vouchers.
+	 *
+	 * Finds recent orders in the trigger status whose voucher generation never
+	 * completed and finishes it idempotently.
+	 *
+	 * @since    2.1.0
+	 */
+	public function safety_net_sweep() {
+		if ( ! function_exists( 'wc_get_orders' ) ) {
+			return;
+		}
+
+		$trigger_status = get_option( 'bs_custom_mail_trigger_status', 'processing' );
+
+		$order_ids = wc_get_orders(
+			array(
+				'status'        => $trigger_status,
+				'limit'         => 25,
+				'orderby'       => 'date',
+				'order'         => 'DESC',
+				'return'        => 'ids',
+				'date_modified' => '>' . ( time() - DAY_IN_SECONDS ),
+				'meta_query'    => array(
+					array(
+						'key'     => '_bs_vouchers_generated',
+						'compare' => 'NOT EXISTS',
+					),
+				),
+			)
+		);
+
+		if ( empty( $order_ids ) ) {
+			return;
+		}
+
+		foreach ( $order_ids as $order_id ) {
+			$this->process_order_vouchers( $order_id, 'safety_net' );
+		}
+	}
+
+	/**
+	 * Get the plugin voucher record id for an order item, if any.
+	 *
+	 * @since    2.1.0
+	 * @param    int    $item_id    Order item ID.
+	 * @return   int                Voucher id, or 0.
+	 */
+	private function get_voucher_id_for_item( $item_id ) {
+		global $wpdb;
+		$table = $wpdb->prefix . 'bs_custom_mail_vouchers';
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return (int) $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$table} WHERE order_item_id = %d LIMIT 1", (int) $item_id ) );
+	}
+
+	/**
+	 * Get the stored PDF path for a voucher record.
+	 *
+	 * @since    2.1.0
+	 * @param    int    $voucher_id    Voucher record id.
+	 * @return   string
+	 */
+	private function get_voucher_pdf_path( $voucher_id ) {
+		global $wpdb;
+		$table = $wpdb->prefix . 'bs_custom_mail_vouchers';
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return (string) $wpdb->get_var( $wpdb->prepare( "SELECT pdf_path FROM {$table} WHERE id = %d", (int) $voucher_id ) );
+	}
+
+	/**
+	 * Write a safety-net log entry (shared source with the email safety net).
+	 *
+	 * @since    2.1.0
+	 * @param    string    $message    Log message.
+	 * @param    string    $level      PSR-3 level. Default "info".
+	 */
+	private function log( $message, $level = 'info' ) {
+		if ( function_exists( 'wc_get_logger' ) ) {
+			wc_get_logger()->log( $level, $message, array( 'source' => 'bs-custom-mail-safety-net' ) );
+		} elseif ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+			error_log( '[bs-custom-mail-safety-net][' . $level . '] ' . $message );
 		}
 	}
 
