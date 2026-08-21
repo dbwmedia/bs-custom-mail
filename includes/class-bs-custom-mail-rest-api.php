@@ -517,6 +517,7 @@ class Bs_Custom_Mail_REST_API {
 			'trigger_status' => array(
 				'type'              => 'string',
 				'sanitize_callback' => 'sanitize_text_field',
+				'validate_callback' => array( $this, 'validate_order_status' ),
 			),
 			'from_name'      => array(
 				'type'              => 'string',
@@ -526,7 +527,38 @@ class Bs_Custom_Mail_REST_API {
 				'type'              => 'string',
 				'sanitize_callback' => 'sanitize_email',
 			),
+			'express_guard'  => array(
+				'type' => 'boolean',
+			),
+			'buyer_copy'     => array(
+				'type' => 'boolean',
+			),
 		);
+	}
+
+	/**
+	 * Validate that a submitted order status actually exists.
+	 *
+	 * A typo here used to silence the entire mail pipeline with no visible
+	 * error anywhere.
+	 *
+	 * @since    3.0.0
+	 * @param    string $param The submitted value.
+	 * @return   bool
+	 */
+	public function validate_order_status( $param ) {
+		if ( ! function_exists( 'wc_get_order_statuses' ) ) {
+			return true;
+		}
+
+		$valid = array_map(
+			function ( $key ) {
+				return preg_replace( '/^wc-/', '', $key );
+			},
+			array_keys( wc_get_order_statuses() )
+		);
+
+		return in_array( preg_replace( '/^wc-/', '', (string) $param ), $valid, true );
 	}
 
 	/**
@@ -809,6 +841,12 @@ class Bs_Custom_Mail_REST_API {
 			'trigger_status' => get_option( 'bs_custom_mail_trigger_status', 'processing' ),
 			'from_name'      => get_option( 'bs_custom_mail_from_name', get_bloginfo( 'name' ) ),
 			'from_email'     => get_option( 'bs_custom_mail_from_email', get_option( 'admin_email' ) ),
+			'express_guard'  => 'no' !== get_option( 'bs_custom_mail_express_guard', 'yes' ),
+			'buyer_copy'     => 'no' !== get_option( 'bs_custom_mail_buyer_copy', 'yes' ),
+			// Call this URL from an external cron service (once a minute) to
+			// drive the delivery queue on hosting without shell access.
+			'runner_url'     => Bs_Custom_Mail_Health::get_runner_url(),
+			'scheduler'      => Bs_Custom_Mail_Health::diagnose_scheduler(),
 		);
 
 		return rest_ensure_response( $settings );
@@ -823,7 +861,7 @@ class Bs_Custom_Mail_REST_API {
 	 */
 	public function update_settings( $request ) {
 		if ( $request->has_param( 'trigger_status' ) ) {
-			update_option( 'bs_custom_mail_trigger_status', $request->get_param( 'trigger_status' ) );
+			update_option( 'bs_custom_mail_trigger_status', preg_replace( '/^wc-/', '', (string) $request->get_param( 'trigger_status' ) ) );
 		}
 
 		if ( $request->has_param( 'from_name' ) ) {
@@ -832,6 +870,14 @@ class Bs_Custom_Mail_REST_API {
 
 		if ( $request->has_param( 'from_email' ) ) {
 			update_option( 'bs_custom_mail_from_email', $request->get_param( 'from_email' ) );
+		}
+
+		if ( $request->has_param( 'express_guard' ) ) {
+			update_option( 'bs_custom_mail_express_guard', $request->get_param( 'express_guard' ) ? 'yes' : 'no' );
+		}
+
+		if ( $request->has_param( 'buyer_copy' ) ) {
+			update_option( 'bs_custom_mail_buyer_copy', $request->get_param( 'buyer_copy' ) ? 'yes' : 'no' );
 		}
 
 		return $this->get_settings();
@@ -1139,7 +1185,7 @@ class Bs_Custom_Mail_REST_API {
 		$table_name = $wpdb->prefix . 'bs_custom_mail_vouchers';
 
 		$existing = $wpdb->get_row(
-			$wpdb->prepare( "SELECT id FROM {$table_name} WHERE id = %d", $id )
+			$wpdb->prepare( "SELECT * FROM {$table_name} WHERE id = %d", $id )
 		);
 
 		if ( ! $existing ) {
@@ -1157,6 +1203,25 @@ class Bs_Custom_Mail_REST_API {
 
 		if ( empty( $update_data ) ) {
 			return rest_ensure_response( $this->get_voucher( $request ) );
+		}
+
+		// Keep the WooCommerce coupon in sync with the voucher status.
+		// Previously this endpoint only rewrote the plugin's own table, so a
+		// voucher "cancelled" in the admin UI stayed fully redeemable.
+		if ( isset( $update_data['status'] ) && $update_data['status'] !== $existing->status ) {
+			if ( ! class_exists( 'Bs_Custom_Mail_Voucher' ) ) {
+				require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-bs-custom-mail-voucher.php';
+			}
+
+			if ( 'cancelled' === $update_data['status'] ) {
+				Bs_Custom_Mail_Voucher::devalue_coupon( $existing->voucher_code );
+			} elseif ( 'active' === $update_data['status'] && 'cancelled' === $existing->status ) {
+				Bs_Custom_Mail_Voucher::revalue_coupon( $existing->voucher_code, $existing->expiry_date );
+			}
+
+			if ( 'used' === $update_data['status'] ) {
+				$update_data['used_at'] = current_time( 'mysql' );
+			}
 		}
 
 		$wpdb->update(

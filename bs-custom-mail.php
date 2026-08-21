@@ -16,13 +16,15 @@
  * Plugin Name:       Bootsschule Mail & Vouchers
  * Plugin URI:        https://jltzbrg.com
  * Description:       Automatisierte E-Mails und Wertgutscheine für Bootsschule Berlin Köpenick. Sendet personalisierte Bestellbestätigungen und erstellt PDF-Gutscheine.
- * Version:           2.0.0
+ * Version:           3.0.0
  * Author:            Julio Litzenberg
  * Author URI:        https://jltzbrg.com/
  * License:           GPL-2.0+
  * License URI:       http://www.gnu.org/licenses/gpl-2.0.txt
  * Text Domain:       bs-custom-mail
  * Domain Path:       /languages
+ * Requires PHP:      7.4
+ * WC requires at least: 8.0
  */
 
 // If this file is called directly, abort.
@@ -35,7 +37,25 @@ if ( ! defined( 'WPINC' ) ) {
  * Start at version 1.0.0 and use SemVer - https://semver.org
  * Rename this for your plugin and update it as you release new versions.
  */
-define( 'BS_CUSTOM_MAIL_VERSION', '2.0.0' );
+define( 'BS_CUSTOM_MAIL_VERSION', '3.0.0' );
+
+/**
+ * Declare compatibility with WooCommerce High-Performance Order Storage.
+ *
+ * All order meta access goes through the order CRUD API and no order query
+ * relies on the post meta tables, so HPOS can be switched on safely.
+ */
+add_action(
+	'before_woocommerce_init',
+	function () {
+		// Note: compatibility with the block based cart/checkout is NOT
+		// declared — the voucher fields are rendered with classic hooks and
+		// that combination has not been verified.
+		if ( class_exists( \Automattic\WooCommerce\Utilities\FeaturesUtil::class ) ) {
+			\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );
+		}
+	}
+);
 
 /**
  * The code that runs during plugin activation.

@@ -33,6 +33,18 @@ class Bs_Custom_Mail_Activator {
 	public static function activate() {
 		global $wpdb;
 
+		// Generate the external cron runner key on first activation so the
+		// delivery URL is ready to be handed to the hoster right away.
+		if ( ! get_option( 'bs_custom_mail_runner_key' ) ) {
+			update_option( 'bs_custom_mail_runner_key', wp_generate_password( 40, false ), false );
+		}
+
+		// A fresh install starts with express checkout blocked on voucher
+		// products until it has been verified that the express flow carries
+		// the voucher fields on this shop.
+		add_option( 'bs_custom_mail_express_guard', 'yes' );
+		add_option( 'bs_custom_mail_buyer_copy', 'yes' );
+
 		$charset_collate = $wpdb->get_charset_collate();
 
 		// Table for email templates

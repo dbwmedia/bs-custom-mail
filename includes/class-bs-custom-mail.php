@@ -58,6 +58,15 @@ class Bs_Custom_Mail {
 	protected $version;
 
 	/**
+	 * The asynchronous post-checkout processing queue.
+	 *
+	 * @since    3.0.0
+	 * @access   protected
+	 * @var      Bs_Custom_Mail_Queue    $queue
+	 */
+	protected $queue;
+
+	/**
 	 * Define the core functionality of the plugin.
 	 *
 	 * Set the plugin name and the plugin version that can be used throughout the plugin.
@@ -78,9 +87,8 @@ class Bs_Custom_Mail {
 		$this->set_locale();
 		$this->define_admin_hooks();
 		$this->define_public_hooks();
-		$this->define_woocommerce_hooks();
 		$this->define_product_hooks();
-		$this->define_voucher_hooks();
+		$this->define_pipeline_hooks();
 		$this->define_rest_api_hooks();
 
 	}
@@ -154,6 +162,16 @@ class Bs_Custom_Mail {
 		 */
 		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-bs-custom-mail-pdf-generator.php';
 
+		/**
+		 * Health monitoring, incident escalation and the external queue runner.
+		 */
+		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-bs-custom-mail-health.php';
+
+		/**
+		 * The asynchronous post-checkout processing queue.
+		 */
+		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-bs-custom-mail-queue.php';
+
 		$this->loader = new Bs_Custom_Mail_Loader();
 
 	}
@@ -211,37 +229,37 @@ class Bs_Custom_Mail {
 	}
 
 	/**
-	 * Register all of the hooks related to WooCommerce functionality.
+	 * Register the post-checkout pipeline: health, vouchers, email, queue.
 	 *
 	 * @since    1.0.0
+	 * @since    3.0.0 Renamed and reorganised around the async queue.
 	 * @access   private
 	 */
-	private function define_woocommerce_hooks() {
+	private function define_pipeline_hooks() {
+
+		$health = new Bs_Custom_Mail_Health();
+		$health->register_hooks();
 
 		$email_sender = new Bs_Custom_Mail_Email_Sender( $this->get_plugin_name(), $this->get_version() );
 
-		// Hook into WooCommerce order status changes
-		$this->loader->add_action( 'woocommerce_order_status_changed', $email_sender, 'handle_order_status_change', 10, 3 );
-
-		// Safety net for lost confirmation emails (e.g. PPCP race condition):
-		// a delayed per-order retry plus a periodic backstop sweep. Both reuse
-		// the same idempotent send routine, so they can never double-send.
-		$this->loader->add_action( 'bs_custom_mail_safety_net_check', $email_sender, 'run_safety_net_check', 10, 1 );
-		$this->loader->add_action( 'bs_custom_mail_safety_net_sweep', $email_sender, 'safety_net_sweep', 10, 0 );
-		$this->loader->add_action( 'init', $email_sender, 'ensure_safety_net_sweep_scheduled' );
-
-	}
-
-	/**
-	 * Register all of the hooks related to voucher functionality.
-	 *
-	 * @since    2.0.0
-	 * @access   private
-	 */
-	private function define_voucher_hooks() {
-
 		$voucher = new Bs_Custom_Mail_Voucher( $this->get_version() );
 		$voucher->register_hooks();
+
+		// The queue owns the order status listener. It only ever enqueues an
+		// async job — no coupon, PDF or email work happens in the checkout
+		// request any more, so a failure there can no longer prevent the order
+		// confirmation from being shown or the cart from being emptied.
+		$this->queue = new Bs_Custom_Mail_Queue( $voucher, $email_sender );
+		$this->queue->register_hooks();
+
+		// Manual retry from the incident notice.
+		$queue = $this->queue;
+		add_action(
+			'bs_custom_mail_manual_retry',
+			function ( $order_id ) use ( $queue ) {
+				$queue->retry_now( $order_id );
+			}
+		);
 
 	}
 

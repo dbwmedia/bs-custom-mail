@@ -23,14 +23,21 @@
 class Bs_Custom_Mail_Deactivator {
 
 	/**
-	 * Short Description. (use period)
+	 * Clean up recurring background work.
 	 *
-	 * Long Description.
+	 * Pending per-order jobs are deliberately left in place: if the plugin is
+	 * reactivated shortly afterwards, orders that were mid-flight still get
+	 * their voucher instead of being silently dropped.
 	 *
 	 * @since    1.0.0
 	 */
 	public static function deactivate() {
+		if ( ! function_exists( 'as_unschedule_all_actions' ) ) {
+			return;
+		}
 
+		as_unschedule_all_actions( 'bs_custom_mail_safety_net_sweep', array(), 'bs-custom-mail' );
+		as_unschedule_all_actions( 'bs_custom_mail_cleanup_pdfs', array(), 'bs-custom-mail' );
 	}
 
 }

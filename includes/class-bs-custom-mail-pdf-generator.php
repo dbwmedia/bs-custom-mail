@@ -206,8 +206,15 @@ class Bs_Custom_Mail_PDF_Generator {
 			}
 		}
 
-		// Save PDF
-		$filename = 'gutschein-' . sanitize_file_name( $data['code'] ) . '-' . time() . '.pdf';
+		// Save PDF.
+		//
+		// The filename deliberately carries no trace of the voucher code. The
+		// uploads directory is inside the web root and the host runs nginx,
+		// where a .htaccess deny rule has no effect — so the only protection
+		// that actually holds is an unguessable name. 32 random characters put
+		// this far out of reach of enumeration, and the file is never linked
+		// publicly: it travels as an email attachment only.
+		$filename = 'gutschein-' . wp_generate_password( 32, false ) . '.pdf';
 		$filepath = $this->upload_dir . $filename;
 		$fileurl = $this->upload_url . $filename;
 

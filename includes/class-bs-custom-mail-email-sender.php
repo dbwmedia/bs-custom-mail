@@ -53,317 +53,120 @@ class Bs_Custom_Mail_Email_Sender {
 	}
 
 	/**
-	 * Handle WooCommerce order status change.
-	 *
-	 * @since    1.0.0
-	 * @param    int       $order_id    Order ID.
-	 * @param    string    $old_status  Old order status.
-	 * @param    string    $new_status  New order status.
-	 */
-	public function handle_order_status_change( $order_id, $old_status, $new_status ) {
-		$trigger_status = get_option( 'bs_custom_mail_trigger_status', 'processing' );
-
-		// Check if the new status matches our trigger
-		if ( $new_status !== $trigger_status ) {
-			return;
-		}
-
-		// Schedule a delayed, idempotent safety-net check BEFORE attempting the
-		// immediate send. If this very request dies later (e.g. the known PPCP
-		// race condition where the checkout request aborts mid-transition), the
-		// scheduled job re-runs the send in a clean, separate request a few
-		// minutes later. If the immediate send below succeeds, the scheduled job
-		// simply finds the "already sent" flag and does nothing.
-		$this->schedule_safety_net_check( $order_id );
-
-		// Attempt the immediate send (unchanged behaviour for the normal case).
-		$this->maybe_send_order_emails( $order_id );
-	}
-
-	/**
 	 * Send all product emails for an order, guarded against double sending.
 	 *
-	 * This is the single, idempotent send routine shared by the live status
-	 * change hook, the per-order Action Scheduler safety net and the recurring
-	 * sweep. It is safe to call multiple times: the `_bs_custom_mail_sent` flag
-	 * guarantees an order is processed at most once.
+	 * Runs exclusively inside the async worker (Bs_Custom_Mail_Queue), never in
+	 * the checkout request. Idempotent and resumable: progress is tracked per
+	 * template, so a retry after a partial failure re-sends only what actually
+	 * failed.
+	 *
+	 * All order meta goes through the order CRUD API rather than
+	 * get_post_meta()/update_post_meta(), which is what makes the plugin
+	 * HPOS compatible.
 	 *
 	 * @since    2.1.0
+	 * @since    3.0.0 Per-template resume, HPOS safe, honest return value.
 	 * @param    int    $order_id    Order ID.
-	 * @return   bool                True if the order's emails are sent (now or already).
+	 * @return   bool   True when the order's emails are settled (sent, already
+	 *                  sent, or nothing to send). False only on a real failure
+	 *                  that deserves a retry.
 	 */
 	public function maybe_send_order_emails( $order_id ) {
-		// Get order
 		$order = wc_get_order( $order_id );
+
 		if ( ! $order ) {
 			return false;
 		}
 
-		// Check if emails were already sent for this order
-		$emails_sent = get_post_meta( $order_id, '_bs_custom_mail_sent', true );
-		if ( $emails_sent ) {
+		// Fully settled on an earlier run.
+		if ( $order->get_meta( '_bs_custom_mail_sent' ) ) {
 			return true;
 		}
 
-		// Loop through order items — explicitly request line items so shipping/fee
-		// items from other plugins never enter the loop without get_product().
-		$items = $order->get_items( 'line_item' );
-		$sent_templates = array();
+		// Templates that already went out on a previous, partially failed run.
+		$already = $order->get_meta( '_bs_custom_mail_templates' );
+		$already = is_array( $already ) ? $already : array();
+
+		// Explicitly request line items so shipping/fee items from other
+		// plugins never enter the loop without get_product().
+		$items   = $order->get_items( 'line_item' );
+		$handled = $already;
+		$failed  = false;
 
 		foreach ( $items as $item ) {
 			$product = $item->get_product();
+
 			if ( ! $product ) {
 				continue;
 			}
 
-			// Check if custom email is enabled for this product
-			$send_custom = get_post_meta( $product->get_id(), '_bs_custom_mail_send_custom', true );
-			if ( 'yes' !== $send_custom ) {
+			if ( 'yes' !== get_post_meta( $product->get_id(), '_bs_custom_mail_send_custom', true ) ) {
 				continue;
 			}
 
-			// Get manually assigned template
 			$template_key = get_post_meta( $product->get_id(), '_bs_custom_mail_template', true );
 
-			// Fallback: try automatic matching if no template is assigned
 			if ( empty( $template_key ) ) {
 				$template_key = $this->match_product_to_template( $product->get_name() );
 			}
 
-			if ( $template_key && ! in_array( $template_key, $sent_templates, true ) ) {
-				$success = $this->send_product_email( $order, $product, $template_key );
-				if ( $success ) {
-					$sent_templates[] = $template_key;
-				}
-			}
-		}
-
-		// Mark emails as sent
-		if ( ! empty( $sent_templates ) ) {
-			update_post_meta( $order_id, '_bs_custom_mail_sent', true );
-			update_post_meta( $order_id, '_bs_custom_mail_sent_at', current_time( 'mysql' ) );
-			update_post_meta( $order_id, '_bs_custom_mail_templates', $sent_templates );
-		}
-
-		return ! empty( $sent_templates );
-	}
-
-	/**
-	 * Schedule a one-off, idempotent safety-net check for a single order.
-	 *
-	 * Uses WooCommerce's bundled Action Scheduler when available (preferred,
-	 * because it survives a dying request and runs in a clean context), and
-	 * falls back to WP-Cron otherwise. Scheduling is skipped if a check for the
-	 * same order is already queued.
-	 *
-	 * @since    2.1.0
-	 * @param    int    $order_id    Order ID.
-	 */
-	public function schedule_safety_net_check( $order_id ) {
-		$order_id = (int) $order_id;
-		if ( ! $order_id ) {
-			return;
-		}
-
-		/**
-		 * Filter the delay (in seconds) before the per-order safety-net check runs.
-		 *
-		 * @since 2.1.0
-		 * @param int $delay Delay in seconds. Default 5 minutes.
-		 */
-		$delay = (int) apply_filters( 'bs_custom_mail_safety_net_delay', 5 * MINUTE_IN_SECONDS );
-		$args  = array( 'order_id' => $order_id );
-
-		if ( function_exists( 'as_schedule_single_action' ) && function_exists( 'as_next_scheduled_action' ) ) {
-			if ( false === as_next_scheduled_action( 'bs_custom_mail_safety_net_check', $args, 'bs-custom-mail' ) ) {
-				as_schedule_single_action( time() + $delay, 'bs_custom_mail_safety_net_check', $args, 'bs-custom-mail' );
-				$this->log( sprintf( 'Sicherheitsnetz-Check für Bestellung #%d in %d s eingeplant (Action Scheduler).', $order_id, $delay ), 'debug' );
-			}
-			return;
-		}
-
-		// Fallback: WP-Cron.
-		if ( ! wp_next_scheduled( 'bs_custom_mail_safety_net_check', array( $order_id ) ) ) {
-			wp_schedule_single_event( time() + $delay, 'bs_custom_mail_safety_net_check', array( $order_id ) );
-		}
-	}
-
-	/**
-	 * Action Scheduler / WP-Cron callback: retry sending for one order if needed.
-	 *
-	 * Idempotent. Only acts on orders that are still in the trigger status and
-	 * have not yet had their emails sent.
-	 *
-	 * @since    2.1.0
-	 * @param    int    $order_id    Order ID.
-	 */
-	public function run_safety_net_check( $order_id ) {
-		$order_id = (int) $order_id;
-		if ( ! $order_id ) {
-			return;
-		}
-
-		// Already handled — nothing to do.
-		if ( get_post_meta( $order_id, '_bs_custom_mail_sent', true ) ) {
-			return;
-		}
-
-		$order = wc_get_order( $order_id );
-		if ( ! $order ) {
-			return;
-		}
-
-		// Only recover orders that actually reached the configured trigger status.
-		$trigger_status = get_option( 'bs_custom_mail_trigger_status', 'processing' );
-		if ( $order->get_status() !== $trigger_status ) {
-			return;
-		}
-
-		if ( $this->maybe_send_order_emails( $order_id ) ) {
-			$order->add_order_note(
-				__( 'Bestätigungs-E-Mail nachträglich über das Sicherheitsnetz versendet (Erstversand beim Checkout ausgeblieben).', 'bs-custom-mail' )
-			);
-			$this->log(
-				sprintf(
-					'RECOVERED (per-order): Bestellung #%d (%s) war im Status "%s", aber ohne versendete Bestätigungsmail. Mail wurde über das verzögerte Sicherheitsnetz nachversendet. Wahrscheinliche Ursache: abgebrochener Checkout-Request (z. B. PPCP-Race-Condition).',
-					$order_id,
-					$order->get_billing_email(),
-					$trigger_status
-				),
-				'warning'
-			);
-		}
-	}
-
-	/**
-	 * Make sure the recurring safety-net sweep is scheduled. Idempotent.
-	 *
-	 * Hooked on `init`; only schedules the recurring action once. This is the
-	 * primary safety net for the observed incident: it catches orders that
-	 * reached the trigger status but for which the send was never even
-	 * attempted (e.g. because the original request died before the status
-	 * change hook could run at all).
-	 *
-	 * @since    2.1.0
-	 */
-	public function ensure_safety_net_sweep_scheduled() {
-		if ( ! function_exists( 'as_schedule_recurring_action' ) || ! function_exists( 'as_next_scheduled_action' ) ) {
-			return;
-		}
-
-		if ( false === as_next_scheduled_action( 'bs_custom_mail_safety_net_sweep', array(), 'bs-custom-mail' ) ) {
-			/**
-			 * Filter the interval (in seconds) of the recurring safety-net sweep.
-			 *
-			 * @since 2.1.0
-			 * @param int $interval Interval in seconds. Default 10 minutes.
-			 */
-			$interval = (int) apply_filters( 'bs_custom_mail_safety_net_sweep_interval', 10 * MINUTE_IN_SECONDS );
-			as_schedule_recurring_action( time() + $interval, $interval, 'bs_custom_mail_safety_net_sweep', array(), 'bs-custom-mail' );
-		}
-	}
-
-	/**
-	 * Action Scheduler callback: periodic backstop sweep.
-	 *
-	 * Finds recent orders in the trigger status whose confirmation email was
-	 * never even attempted (no statistics row at all) and sends it. Orders that
-	 * were already attempted — successfully or not (`sent` / `failed` /
-	 * `template_not_found`) — are left untouched, so the sweep never reprocesses
-	 * them and never spams the statistics table.
-	 *
-	 * @since    2.1.0
-	 */
-	public function safety_net_sweep() {
-		if ( ! function_exists( 'wc_get_orders' ) ) {
-			return;
-		}
-
-		$trigger_status = get_option( 'bs_custom_mail_trigger_status', 'processing' );
-
-		$order_ids = wc_get_orders(
-			array(
-				'status'        => $trigger_status,
-				'limit'         => 25,
-				'orderby'       => 'date',
-				'order'         => 'DESC',
-				'return'        => 'ids',
-				'date_modified' => '>' . ( time() - DAY_IN_SECONDS ),
-				'meta_query'    => array(
-					array(
-						'key'     => '_bs_custom_mail_sent',
-						'compare' => 'NOT EXISTS',
-					),
-				),
-			)
-		);
-
-		if ( empty( $order_ids ) ) {
-			return;
-		}
-
-		foreach ( $order_ids as $order_id ) {
-			// Skip orders that were already attempted (a statistics row exists).
-			if ( $this->order_has_stats_row( $order_id ) ) {
+			if ( ! $template_key || in_array( $template_key, $handled, true ) ) {
 				continue;
 			}
 
-			if ( $this->maybe_send_order_emails( $order_id ) ) {
-				$order = wc_get_order( $order_id );
-				if ( $order ) {
-					$order->add_order_note(
-						__( 'Bestätigungs-E-Mail nachträglich über den Sicherheitsnetz-Sweep versendet (Erstversand ausgeblieben).', 'bs-custom-mail' )
-					);
-				}
-				$this->log(
-					sprintf(
-						'RECOVERED (sweep): Bestellung #%d war im Status "%s" ohne jeden Sendeversuch (keine Statistik-Zeile). Bestätigungsmail wurde über den periodischen Sweep nachversendet. Wahrscheinliche Ursache: ursprünglicher Request starb vor dem Mailversand (z. B. PPCP-Race-Condition).',
-						$order_id,
-						$trigger_status
-					),
-					'warning'
-				);
+			$result = $this->send_product_email( $order, $product, $template_key );
+
+			if ( 'sent' === $result ) {
+				$handled[] = $template_key;
+				continue;
 			}
+
+			if ( 'template_not_found' === $result ) {
+				// Retrying cannot fix a missing template — escalate instead of
+				// looping forever, and treat it as handled.
+				$handled[] = $template_key;
+
+				Bs_Custom_Mail_Health::record_incident(
+					$order->get_id(),
+					'template_missing',
+					sprintf(
+						/* translators: 1: template key, 2: product name */
+						__( 'Für die Vorlage "%1$s" (Produkt: %2$s) existiert kein aktives Template. Es wurde keine Bestätigungsmail versendet.', 'bs-custom-mail' ),
+						$template_key,
+						$product->get_name()
+					)
+				);
+
+				continue;
+			}
+
+			$failed = true;
 		}
+
+		// Persist progress before returning so a retry never resends.
+		if ( $handled !== $already ) {
+			$order->update_meta_data( '_bs_custom_mail_templates', array_values( array_unique( $handled ) ) );
+		}
+
+		if ( ! $failed ) {
+			$order->update_meta_data( '_bs_custom_mail_sent', true );
+			$order->update_meta_data( '_bs_custom_mail_sent_at', current_time( 'mysql' ) );
+		}
+
+		$order->save();
+
+		return ! $failed;
 	}
 
 	/**
-	 * Whether at least one statistics row already exists for an order.
-	 *
-	 * @since    2.1.0
-	 * @param    int    $order_id    Order ID.
-	 * @return   bool
-	 */
-	private function order_has_stats_row( $order_id ) {
-		global $wpdb;
-
-		$table = $wpdb->prefix . 'bs_custom_mail_stats';
-
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$count = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE order_id = %d", (int) $order_id ) );
-
-		return (int) $count > 0;
-	}
-
-	/**
-	 * Write a safety-net log entry.
-	 *
-	 * Uses the WooCommerce logger — visible under WooCommerce → Status →
-	 * Protokolle, source "bs-custom-mail-safety-net" — with a WP_DEBUG fallback
-	 * to the standard PHP error log. Recoveries are logged at "warning" so they
-	 * stand out; routine events use "debug".
+	 * Write a pipeline log entry.
 	 *
 	 * @since    2.1.0
 	 * @param    string    $message    Log message.
-	 * @param    string    $level      PSR-3 level (debug, info, notice, warning, error). Default "info".
+	 * @param    string    $level      PSR-3 level. Default "info".
 	 */
 	private function log( $message, $level = 'info' ) {
-		if ( function_exists( 'wc_get_logger' ) ) {
-			wc_get_logger()->log( $level, $message, array( 'source' => 'bs-custom-mail-safety-net' ) );
-		} elseif ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-			error_log( '[bs-custom-mail-safety-net][' . $level . '] ' . $message );
-		}
+		Bs_Custom_Mail_Health::log( $message, $level );
 	}
 
 	/**
@@ -414,7 +217,7 @@ class Bs_Custom_Mail_Email_Sender {
 	 * @param    WC_Order    $order          Order object.
 	 * @param    WC_Product  $product        Product object.
 	 * @param    string      $template_key   Template key.
-	 * @return   bool                        Success or failure.
+	 * @return   string                      One of "sent", "failed", "template_not_found".
 	 */
 	private function send_product_email( $order, $product, $template_key ) {
 		global $wpdb;
@@ -428,7 +231,7 @@ class Bs_Custom_Mail_Email_Sender {
 
 		if ( ! $template ) {
 			$this->log_statistic( $order->get_id(), $order->get_billing_email(), $product->get_name(), $template_key, 'template_not_found' );
-			return false;
+			return 'template_not_found';
 		}
 
 		// Build extra placeholders from voucher data if available.
@@ -479,7 +282,9 @@ class Bs_Custom_Mail_Email_Sender {
 					if ( ! is_dir( $tmp_dir ) ) {
 						wp_mkdir_p( $tmp_dir );
 					}
-					$tmp_invoice_path = $tmp_dir . 'invoice-' . $order->get_id() . '.pdf';
+					// The unique suffix prevents two concurrent sends from
+				// overwriting each other's temporary invoice.
+				$tmp_invoice_path = $tmp_dir . 'invoice-' . $order->get_id() . '-' . uniqid( '', true ) . '.pdf';
 					$pdf_content      = $invoice->get_pdf();
 					if ( $pdf_content ) {
 						// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
@@ -510,12 +315,23 @@ class Bs_Custom_Mail_Email_Sender {
 			'From: ' . $from_name . ' <' . $from_email . '>',
 		);
 
+		// Capture the underlying PHPMailer error so a failure is diagnosable
+		// instead of just being a silent "false".
+		$mail_error    = null;
+		$error_handler = function ( $wp_error ) use ( &$mail_error ) {
+			$mail_error = $wp_error;
+		};
+		add_action( 'wp_mail_failed', $error_handler );
+
 		// Send email to customer
 		$sent = wp_mail( $to, $subject, $message, $headers, $attachments );
 
-		// Send to additional recipients if configured
+		remove_action( 'wp_mail_failed', $error_handler );
+
+		// Send to additional recipients if configured. A failing CC must not
+		// mark the customer's mail as failed.
 		$custom_recipients = get_post_meta( $product->get_id(), '_bs_custom_mail_custom_recipients', true );
-		if ( ! empty( $custom_recipients ) ) {
+		if ( $sent && ! empty( $custom_recipients ) ) {
 			$additional_emails = array_map( 'trim', explode( ',', $custom_recipients ) );
 			foreach ( $additional_emails as $email ) {
 				if ( is_email( $email ) ) {
@@ -535,7 +351,20 @@ class Bs_Custom_Mail_Email_Sender {
 		$status = $sent ? 'sent' : 'failed';
 		$this->log_statistic( $order->get_id(), $to, $product->get_name(), $template_key, $status );
 
-		return $sent;
+		if ( ! $sent ) {
+			$this->log(
+				sprintf(
+					'Bestätigungsmail für Bestellung #%d an %s (Vorlage %s) fehlgeschlagen: %s',
+					$order->get_id(),
+					$to,
+					$template_key,
+					$mail_error instanceof WP_Error ? $mail_error->get_error_message() : 'unbekannter Fehler'
+				),
+				'error'
+			);
+		}
+
+		return $sent ? 'sent' : 'failed';
 	}
 
 	/**
@@ -1199,10 +1028,63 @@ class Bs_Custom_Mail_Email_Sender {
 		// Append AGB/Widerruf/Datenschutz from Germanized
 		$attachments = array_merge( $attachments, $this->get_germanized_legal_attachments() );
 
+		// Capture the delivery error for the log.
+		$mail_error    = null;
+		$error_handler = function ( $wp_error ) use ( &$mail_error ) {
+			$mail_error = $wp_error;
+		};
+		add_action( 'wp_mail_failed', $error_handler );
+
 		// Send email
 		$sent = wp_mail( $to, $subject, $body, $headers, $attachments );
 
-		return $sent;
+		remove_action( 'wp_mail_failed', $error_handler );
+
+		if ( ! $sent ) {
+			$this->log(
+				sprintf(
+					'Gutschein-Mail an %s fehlgeschlagen: %s',
+					$to,
+					$mail_error instanceof WP_Error ? $mail_error->get_error_message() : 'unbekannter Fehler'
+				),
+				'error'
+			);
+
+			return false;
+		}
+
+		// Send a copy to the buyer when the voucher went to somebody else.
+		// Without this a typo in the recipient address means the customer paid
+		// and has no way of ever seeing their code.
+		$buyer = $order ? $order->get_billing_email() : '';
+
+		if ( $buyer && is_email( $buyer ) && strtolower( $buyer ) !== strtolower( $to ) && $this->buyer_copy_enabled() ) {
+			$copy_subject = sprintf(
+				/* translators: %s: recipient email address */
+				__( 'Ihre Gutschein-Bestellung (Kopie, versendet an %s)', 'bs-custom-mail' ),
+				$to
+			);
+
+			wp_mail( $buyer, $copy_subject, $body, $headers, $attachments );
+		}
+
+		return true;
+	}
+
+	/**
+	 * Whether the buyer receives a copy of a gifted voucher.
+	 *
+	 * @since    3.0.0
+	 * @return   bool
+	 */
+	private function buyer_copy_enabled() {
+		/**
+		 * Filter whether the buyer gets a copy of a voucher sent to a third party.
+		 *
+		 * @since 3.0.0
+		 * @param bool $enabled Default true.
+		 */
+		return (bool) apply_filters( 'bs_custom_mail_send_buyer_copy', 'no' !== get_option( 'bs_custom_mail_buyer_copy', 'yes' ) );
 	}
 
 	/**

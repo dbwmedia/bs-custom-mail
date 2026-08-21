@@ -103,26 +103,29 @@ class Bs_Custom_Mail_Voucher {
 		add_action( 'woocommerce_before_add_to_cart_button', array( $this, 'add_frontend_fields' ) );
 
 		// Cart functionality
+		add_filter( 'woocommerce_add_to_cart_validation', array( $this, 'validate_add_to_cart' ), 10, 3 );
 		add_filter( 'woocommerce_add_cart_item_data', array( $this, 'add_cart_item_data' ), 10, 3 );
 		add_filter( 'woocommerce_get_item_data', array( $this, 'display_cart_item_data' ), 10, 2 );
 		add_action( 'woocommerce_before_calculate_totals', array( $this, 'set_cart_item_price' ) );
 		add_action( 'woocommerce_checkout_create_order_line_item', array( $this, 'save_order_item_meta' ), 10, 4 );
 
-		// Voucher generation
-		add_action( 'woocommerce_order_status_processing', array( $this, 'generate_voucher' ) );
-		add_action( 'woocommerce_order_status_completed', array( $this, 'generate_voucher' ) );
+		// Express checkout guard. Express buttons (Apple Pay / Google Pay) add
+		// the product straight to the cart with their own AJAX request, which
+		// does not necessarily carry the voucher fields. Until that is verified
+		// per gateway, express buttons are hidden on voucher products so a
+		// voucher can never be bought without its value and gift data.
+		add_filter( 'wcpay_payment_request_is_product_supported', array( $this, 'filter_express_product_support' ), 10, 2 );
+		add_filter( 'wcpay_express_checkout_button_is_supported_product', array( $this, 'filter_express_product_support' ), 10, 2 );
+		add_filter( 'wcpay_payment_request_should_show_express_checkout_button', array( $this, 'filter_express_button_visibility' ), 10, 1 );
 
-		// Safety net: recover partially-generated vouchers (e.g. when the PPCP
-		// race condition aborts the request mid-generation). Idempotent — never
-		// creates a duplicate coupon. Registered at an earlier priority (5) than
-		// the email safety net (10) so the voucher code is available before any
-		// confirmation mail is (re)sent.
-		add_action( 'bs_custom_mail_safety_net_check', array( $this, 'run_safety_net_check' ), 5, 1 );
-		add_action( 'bs_custom_mail_safety_net_sweep', array( $this, 'safety_net_sweep' ), 5, 0 );
+		// Voucher generation now runs exclusively through the async queue
+		// (Bs_Custom_Mail_Queue). No coupon, PDF or mail work happens in the
+		// checkout request any more.
 
 		// Voucher cancellation
 		add_action( 'woocommerce_order_status_cancelled', array( $this, 'cancel_voucher' ) );
 		add_action( 'woocommerce_order_status_refunded', array( $this, 'cancel_voucher' ) );
+		add_action( 'woocommerce_order_partially_refunded', array( $this, 'flag_partial_refund' ), 10, 2 );
 
 		// Sync voucher status when a coupon from this plugin is redeemed.
 		add_action( 'woocommerce_order_status_processing', array( $this, 'sync_voucher_status_on_order' ) );
@@ -130,6 +133,72 @@ class Bs_Custom_Mail_Voucher {
 
 		// Admin scripts
 		add_action( 'admin_enqueue_scripts', array( $this, 'admin_scripts' ) );
+	}
+
+	/**
+	 * Whether a product is one of our voucher products.
+	 *
+	 * @since    3.0.0
+	 * @param    int    $product_id    Product ID.
+	 * @return   bool
+	 */
+	public static function is_voucher_product( $product_id ) {
+		return 'yes' === get_post_meta( (int) $product_id, '_bs_custom_mail_voucher', true );
+	}
+
+	/**
+	 * Disable express checkout support for voucher products.
+	 *
+	 * @since    3.0.0
+	 * @param    bool       $supported  Current support state.
+	 * @param    WC_Product $product    Product object.
+	 * @return   bool
+	 */
+	public function filter_express_product_support( $supported, $product ) {
+		if ( ! $this->express_guard_enabled() ) {
+			return $supported;
+		}
+
+		if ( is_object( $product ) && method_exists( $product, 'get_id' ) && self::is_voucher_product( $product->get_id() ) ) {
+			return false;
+		}
+
+		return $supported;
+	}
+
+	/**
+	 * Hide the express checkout button on voucher product pages.
+	 *
+	 * @since    3.0.0
+	 * @param    bool    $show    Current visibility.
+	 * @return   bool
+	 */
+	public function filter_express_button_visibility( $show ) {
+		if ( ! $this->express_guard_enabled() ) {
+			return $show;
+		}
+
+		if ( function_exists( 'is_product' ) && is_product() ) {
+			global $product;
+			if ( is_object( $product ) && self::is_voucher_product( $product->get_id() ) ) {
+				return false;
+			}
+		}
+
+		return $show;
+	}
+
+	/**
+	 * Whether the express checkout guard is active.
+	 *
+	 * Can be switched off in the settings once express checkout has been
+	 * verified to carry the voucher fields on this shop.
+	 *
+	 * @since    3.0.0
+	 * @return   bool
+	 */
+	private function express_guard_enabled() {
+		return 'no' !== get_option( 'bs_custom_mail_express_guard', 'yes' );
 	}
 
 	/**
@@ -455,6 +524,79 @@ class Bs_Custom_Mail_Voucher {
 	}
 
 	/**
+	 * Block adding a voucher to the cart when its data is invalid.
+	 *
+	 * Previously an invalid amount only produced a notice while the product
+	 * still landed in the cart — with a price of 0 for products that have no
+	 * WooCommerce price of their own.
+	 *
+	 * @since    3.0.0
+	 * @param    bool    $passed        Current validation state.
+	 * @param    int     $product_id    Product ID.
+	 * @param    int     $quantity      Quantity.
+	 * @return   bool
+	 */
+	public function validate_add_to_cart( $passed, $product_id, $quantity ) {
+		if ( ! self::is_voucher_product( $product_id ) ) {
+			return $passed;
+		}
+
+		// A fixed price voucher needs no input at all.
+		if ( $this->get_fixed_price( $product_id ) ) {
+			return $passed;
+		}
+
+		$min = floatval( get_post_meta( $product_id, '_bs_custom_mail_voucher_min_price', true ) ?: 10 );
+		$max = floatval( get_post_meta( $product_id, '_bs_custom_mail_voucher_max_price', true ) ?: 1000 );
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$raw = isset( $_POST['bs_voucher_value'] ) ? sanitize_text_field( wp_unslash( $_POST['bs_voucher_value'] ) ) : '';
+
+		if ( '' === $raw ) {
+			wc_add_notice( __( 'Bitte gib einen Gutscheinwert an.', 'bs-custom-mail' ), 'error' );
+			return false;
+		}
+
+		$value = floatval( str_replace( ',', '.', $raw ) );
+
+		if ( $value < $min || $value > $max ) {
+			wc_add_notice(
+				sprintf(
+					/* translators: 1: minimum amount, 2: maximum amount */
+					__( 'Bitte gib einen Gutscheinwert zwischen %1$s und %2$s ein.', 'bs-custom-mail' ),
+					wp_strip_all_tags( wc_price( $min ) ),
+					wp_strip_all_tags( wc_price( $max ) )
+				),
+				'error'
+			);
+			return false;
+		}
+
+		// A voucher must never be paid for with a different voucher.
+		if ( ! empty( $_POST['bs_voucher_recipient'] ) && ! is_email( wp_unslash( $_POST['bs_voucher_recipient'] ) ) ) {
+			wc_add_notice( __( 'Die E-Mail-Adresse des Empfängers ist ungültig.', 'bs-custom-mail' ), 'error' );
+			return false;
+		}
+
+		return $passed;
+	}
+
+	/**
+	 * Resolve the configured fixed price of a voucher product.
+	 *
+	 * @since    3.0.0
+	 * @param    int    $product_id    Product ID.
+	 * @return   float                 The fixed price, or 0.0 when variable.
+	 */
+	private function get_fixed_price( $product_id ) {
+		if ( 'yes' !== get_post_meta( $product_id, '_bs_custom_mail_voucher_fixed_price', true ) ) {
+			return 0.0;
+		}
+
+		return (float) get_post_meta( $product_id, '_bs_custom_mail_voucher_fixed_price_value', true );
+	}
+
+	/**
 	 * Add cart item data.
 	 *
 	 * @since    2.0.0
@@ -464,32 +606,24 @@ class Bs_Custom_Mail_Voucher {
 	 * @return   array
 	 */
 	public function add_cart_item_data( $cart_item_data, $product_id, $variation_id ) {
-		if ( get_post_meta( $product_id, '_bs_custom_mail_voucher', true ) !== 'yes' ) {
+		if ( ! self::is_voucher_product( $product_id ) ) {
 			return $cart_item_data;
 		}
 
-		// Check for fixed price
-		$fixed_price = get_post_meta( $product_id, '_bs_custom_mail_voucher_fixed_price', true );
-		$fixed_price_value = get_post_meta( $product_id, '_bs_custom_mail_voucher_fixed_price_value', true );
-		$has_fixed_price = ( $fixed_price === 'yes' && ! empty( $fixed_price_value ) );
+		$fixed_price_value = $this->get_fixed_price( $product_id );
 
-		if ( $has_fixed_price ) {
-			// Use fixed price value
-			$cart_item_data['bs_voucher_value'] = floatval( $fixed_price_value );
+		if ( $fixed_price_value > 0 ) {
+			$cart_item_data['bs_voucher_value'] = $fixed_price_value;
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing
 		} elseif ( isset( $_POST['bs_voucher_value'] ) ) {
-			$value = floatval( sanitize_text_field( $_POST['bs_voucher_value'] ) );
+			// Already validated in validate_add_to_cart().
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing
+			$raw   = sanitize_text_field( wp_unslash( $_POST['bs_voucher_value'] ) );
+			$value = floatval( str_replace( ',', '.', $raw ) );
 			$min   = floatval( get_post_meta( $product_id, '_bs_custom_mail_voucher_min_price', true ) ?: 10 );
 			$max   = floatval( get_post_meta( $product_id, '_bs_custom_mail_voucher_max_price', true ) ?: 1000 );
 
 			if ( $value < $min || $value > $max ) {
-				wc_add_notice(
-					sprintf(
-						__( 'Bitte gib einen Gutscheinwert zwischen %s und %s ein.', 'bs-custom-mail' ),
-						wc_price( $min ),
-						wc_price( $max )
-					),
-					'error'
-				);
 				return $cart_item_data;
 			}
 
@@ -587,11 +721,14 @@ class Bs_Custom_Mail_Voucher {
 	/**
 	 * Generate voucher after order.
 	 *
+	 * Kept for backwards compatibility with any third party code that called
+	 * this directly. Production flow goes through Bs_Custom_Mail_Queue.
+	 *
 	 * @since    2.0.0
 	 * @param    int    $order_id    Order ID.
 	 */
 	public function generate_voucher( $order_id ) {
-		$this->process_order_vouchers( $order_id, 'live' );
+		$this->process_order_vouchers( $order_id, 'legacy' );
 	}
 
 	/**
@@ -605,25 +742,29 @@ class Bs_Custom_Mail_Voucher {
 	 * call instead of starting over.
 	 *
 	 * @since    2.1.0
+	 * @since    3.0.0 Returns a success flag; the "generated" marker is only
+	 *                 written once every step has actually succeeded.
 	 * @param    int       $order_id    Order ID.
-	 * @param    string    $context     'live' (status hook) or 'safety_net' (recovery).
+	 * @param    string    $context     Calling context, for logging.
+	 * @return   bool                   True when the order's vouchers are fully settled.
 	 */
-	private function process_order_vouchers( $order_id, $context = 'live' ) {
+	public function process_order_vouchers( $order_id, $context = 'job' ) {
 		$order = wc_get_order( $order_id );
 
 		if ( ! $order ) {
-			return;
+			return false;
 		}
 
 		// Already fully processed — nothing to do.
 		if ( $order->get_meta( '_bs_vouchers_generated' ) === 'yes' ) {
-			return;
+			return true;
 		}
 
 		// Preserve vouchers already recorded on an earlier (partial) run.
 		$existing_list      = $order->get_meta( '_bs_vouchers_list' );
 		$generated_vouchers = is_array( $existing_list ) ? $existing_list : array();
 		$work_done          = false;
+		$all_delivered      = true;
 
 		foreach ( $order->get_items( 'line_item' ) as $item_id => $item ) {
 			$product_id = $item->get_product_id();
@@ -648,7 +789,7 @@ class Bs_Custom_Mail_Voucher {
 
 			if ( empty( $coupon_code ) ) {
 				$coupon_code = $this->generate_unique_code();
-				$expiry_date = date( 'Y-m-d', strtotime( '+3 years' ) );
+				$expiry_date = $this->calculate_expiry_date();
 				$item->update_meta_data( '_bs_voucher_coupon_code', $coupon_code );
 				$item->update_meta_data( '_bs_voucher_expiry', $expiry_date );
 				$item->save();
@@ -656,7 +797,7 @@ class Bs_Custom_Mail_Voucher {
 			}
 
 			if ( empty( $expiry_date ) ) {
-				$expiry_date = date( 'Y-m-d', strtotime( '+3 years' ) );
+				$expiry_date = $this->calculate_expiry_date();
 			}
 
 			// Create the WooCommerce coupon only if it does not already exist.
@@ -713,21 +854,39 @@ class Bs_Custom_Mail_Voucher {
 			);
 
 			// --- Step 3: voucher email (idempotent) --------------------------
+			// The "sent" flag is only written when wp_mail() actually reported
+			// success. A failed send therefore stays visible to the retry logic
+			// instead of being silently marked as delivered.
 			if ( $item->get_meta( '_bs_voucher_email_sent' ) !== 'yes' ) {
-				$this->send_voucher_email( $voucher_info, $order );
-				$item->update_meta_data( '_bs_voucher_email_sent', 'yes' );
-				$item->save();
-				$work_done = true;
+				$sent = $this->send_voucher_email( $voucher_info, $order );
 
-				$note = sprintf(
-					__( 'Wertgutschein erstellt: %s (%s)', 'bs-custom-mail' ),
-					$coupon_code,
-					wc_price( $voucher_value )
-				);
-				if ( $recipient ) {
-					$note .= sprintf( __( ' → Gesendet an: %s', 'bs-custom-mail' ), $recipient );
+				if ( $sent ) {
+					$item->update_meta_data( '_bs_voucher_email_sent', 'yes' );
+					$item->save();
+					$work_done = true;
+
+					$note = sprintf(
+						__( 'Wertgutschein erstellt: %s (%s)', 'bs-custom-mail' ),
+						$coupon_code,
+						wc_price( $voucher_value )
+					);
+					if ( $recipient ) {
+						$note .= sprintf( __( ' → Gesendet an: %s', 'bs-custom-mail' ), $recipient );
+					}
+					$order->add_order_note( $note );
+				} else {
+					$all_delivered = false;
+
+					Bs_Custom_Mail_Health::log(
+						sprintf(
+							'Gutschein-Mail für Bestellung #%d (Position %d, Code %s) konnte nicht versendet werden.',
+							$order_id,
+							$item_id,
+							$coupon_code
+						),
+						'error'
+					);
 				}
-				$order->add_order_note( $note );
 			}
 
 			// Keep this voucher in the order's list (dedup by code).
@@ -743,95 +902,55 @@ class Bs_Custom_Mail_Voucher {
 			}
 		}
 
-		// Mark the order as processed for vouchers (even when it has no voucher
-		// products) so the safety-net sweep stops re-scanning it. The list — read
-		// by the confirmation email for the {{Gutscheincode}} placeholder — is
-		// only written when at least one voucher exists.
-		$order->update_meta_data( '_bs_vouchers_generated', 'yes' );
+		// The voucher list is persisted even after a partial run: the order
+		// confirmation email reads it for the {{Gutscheincode}} placeholder,
+		// and a code that exists should be usable even if its mail failed.
 		if ( ! empty( $generated_vouchers ) ) {
 			$order->update_meta_data( '_bs_vouchers_list', $generated_vouchers );
 		}
+
+		// The "generated" marker is the promise that nothing is outstanding.
+		// It is only written when every voucher really did get delivered.
+		if ( $all_delivered ) {
+			$order->update_meta_data( '_bs_vouchers_generated', 'yes' );
+		}
+
 		$order->save();
 
-		if ( 'safety_net' === $context && $work_done ) {
-			$this->log(
+		if ( 'job' !== $context && $work_done ) {
+			Bs_Custom_Mail_Health::log(
 				sprintf(
-					'RECOVERED (vouchers): Bestellung #%d hatte eine unvollständige Gutschein-Generierung; fehlende Schritte (Coupon/PDF/Mail) wurden nachgeholt — ohne Coupon-Duplikat. Wahrscheinliche Ursache: abgebrochener Request (z. B. PPCP-Race-Condition).',
-					$order_id
+					'RECOVERED (vouchers): Bestellung #%d hatte eine unvollständige Gutschein-Generierung; fehlende Schritte (Coupon/PDF/Mail) wurden über "%s" nachgeholt — ohne Coupon-Duplikat.',
+					$order_id,
+					$context
 				),
 				'warning'
 			);
 		}
+
+		return $all_delivered;
 	}
 
 	/**
-	 * Action Scheduler / WP-Cron callback: complete vouchers for one order.
+	 * Expiry date for a newly issued voucher.
 	 *
-	 * @since    2.1.0
-	 * @param    int    $order_id    Order ID.
+	 * German statutory limitation runs to the END of the third calendar year
+	 * following the purchase, so a plain "+3 years" was shorter than the legal
+	 * minimum.
+	 *
+	 * @since    3.0.0
+	 * @return   string    Date in Y-m-d.
 	 */
-	public function run_safety_net_check( $order_id ) {
-		$order_id = (int) $order_id;
-		if ( ! $order_id ) {
-			return;
-		}
+	private function calculate_expiry_date() {
+		/**
+		 * Filter the number of full calendar years a voucher stays valid.
+		 *
+		 * @since 3.0.0
+		 * @param int $years Number of years. Default 3.
+		 */
+		$years = (int) apply_filters( 'bs_custom_mail_voucher_validity_years', 3 );
 
-		$order = wc_get_order( $order_id );
-		if ( ! $order ) {
-			return;
-		}
-
-		$trigger_status = get_option( 'bs_custom_mail_trigger_status', 'processing' );
-		if ( $order->get_status() !== $trigger_status ) {
-			return;
-		}
-
-		if ( $order->get_meta( '_bs_vouchers_generated' ) === 'yes' ) {
-			return;
-		}
-
-		$this->process_order_vouchers( $order_id, 'safety_net' );
-	}
-
-	/**
-	 * Action Scheduler callback: periodic backstop sweep for vouchers.
-	 *
-	 * Finds recent orders in the trigger status whose voucher generation never
-	 * completed and finishes it idempotently.
-	 *
-	 * @since    2.1.0
-	 */
-	public function safety_net_sweep() {
-		if ( ! function_exists( 'wc_get_orders' ) ) {
-			return;
-		}
-
-		$trigger_status = get_option( 'bs_custom_mail_trigger_status', 'processing' );
-
-		$order_ids = wc_get_orders(
-			array(
-				'status'        => $trigger_status,
-				'limit'         => 25,
-				'orderby'       => 'date',
-				'order'         => 'DESC',
-				'return'        => 'ids',
-				'date_modified' => '>' . ( time() - DAY_IN_SECONDS ),
-				'meta_query'    => array(
-					array(
-						'key'     => '_bs_vouchers_generated',
-						'compare' => 'NOT EXISTS',
-					),
-				),
-			)
-		);
-
-		if ( empty( $order_ids ) ) {
-			return;
-		}
-
-		foreach ( $order_ids as $order_id ) {
-			$this->process_order_vouchers( $order_id, 'safety_net' );
-		}
+		return sprintf( '%d-12-31', (int) date( 'Y' ) + max( 1, $years ) );
 	}
 
 	/**
@@ -872,41 +991,47 @@ class Bs_Custom_Mail_Voucher {
 	 * @param    string    $level      PSR-3 level. Default "info".
 	 */
 	private function log( $message, $level = 'info' ) {
-		if ( function_exists( 'wc_get_logger' ) ) {
-			wc_get_logger()->log( $level, $message, array( 'source' => 'bs-custom-mail-safety-net' ) );
-		} elseif ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-			error_log( '[bs-custom-mail-safety-net][' . $level . '] ' . $message );
-		}
+		Bs_Custom_Mail_Health::log( $message, $level );
 	}
 
 	/**
 	 * Generate unique voucher code.
 	 *
+	 * Checks both the plugin's own table AND the WooCommerce coupon list. A
+	 * collision with an existing coupon used to be invisible: the generation
+	 * step would simply adopt the foreign coupon, handing the customer someone
+	 * else's discount instead of their voucher.
+	 *
 	 * @since    2.0.0
 	 * @return   string
 	 */
 	private function generate_unique_code() {
-		$prefix = get_option( 'bs_custom_mail_voucher_prefix', 'WERT' );
+		$prefix       = get_option( 'bs_custom_mail_voucher_prefix', 'WERT' );
 		$max_attempts = 10;
-		$attempt = 0;
+		$attempt      = 0;
+
+		global $wpdb;
+		$table_name = $wpdb->prefix . 'bs_custom_mail_vouchers';
 
 		do {
 			$code = $prefix . '-' . strtoupper( wp_generate_password( 8, false ) );
 			$attempt++;
 
-			global $wpdb;
-			$table_name = $wpdb->prefix . 'bs_custom_mail_vouchers';
-			$existing = $wpdb->get_var( $wpdb->prepare(
-				"SELECT id FROM $table_name WHERE voucher_code = %s",
-				$code
-			) );
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$existing = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$table_name} WHERE voucher_code = %s", $code ) );
 
-			if ( ! $existing ) {
-				return $code;
+			if ( $existing ) {
+				continue;
 			}
+
+			if ( function_exists( 'wc_get_coupon_id_by_code' ) && wc_get_coupon_id_by_code( $code ) ) {
+				continue;
+			}
+
+			return $code;
 		} while ( $attempt < $max_attempts );
 
+		// Practically unreachable; the timestamp suffix guarantees uniqueness.
 		return $prefix . '-' . strtoupper( wp_generate_password( 6, false ) ) . '-' . time();
 	}
 
@@ -1045,13 +1170,7 @@ class Bs_Custom_Mail_Voucher {
 		) );
 
 		foreach ( $vouchers as $voucher ) {
-			// Disable WooCommerce coupon
-			$coupon_id = wc_get_coupon_id_by_code( $voucher->voucher_code );
-			if ( $coupon_id ) {
-				$coupon = new WC_Coupon( $coupon_id );
-				$coupon->set_usage_count( $coupon->get_usage_limit() );
-				$coupon->save();
-			}
+			self::devalue_coupon( $voucher->voucher_code );
 
 			// Update voucher status
 			$wpdb->update(
@@ -1065,6 +1184,114 @@ class Bs_Custom_Mail_Voucher {
 				$voucher->voucher_code
 			) );
 		}
+	}
+
+	/**
+	 * Make a coupon permanently unusable.
+	 *
+	 * Belt and braces: the expiry date is moved into the past AND the usage
+	 * count is pushed to the limit. Relying on the usage count alone was
+	 * fragile — raising the usage limit later would silently bring a cancelled
+	 * voucher back to life.
+	 *
+	 * @since    3.0.0
+	 * @param    string    $code    Coupon code.
+	 * @return   bool
+	 */
+	public static function devalue_coupon( $code ) {
+		if ( ! function_exists( 'wc_get_coupon_id_by_code' ) ) {
+			return false;
+		}
+
+		$coupon_id = wc_get_coupon_id_by_code( $code );
+
+		if ( ! $coupon_id ) {
+			return false;
+		}
+
+		$coupon = new WC_Coupon( $coupon_id );
+		$coupon->set_date_expires( gmdate( 'Y-m-d', time() - DAY_IN_SECONDS ) );
+		$coupon->set_usage_limit( 1 );
+		$coupon->set_usage_count( max( 1, (int) $coupon->get_usage_count() ) );
+		$coupon->save();
+
+		Bs_Custom_Mail_Health::log( sprintf( 'Coupon %s entwertet.', $code ), 'info' );
+
+		return true;
+	}
+
+	/**
+	 * Restore a previously cancelled coupon.
+	 *
+	 * @since    3.0.0
+	 * @param    string    $code           Coupon code.
+	 * @param    string    $expiry_date    Expiry date in Y-m-d.
+	 * @return   bool
+	 */
+	public static function revalue_coupon( $code, $expiry_date = '' ) {
+		if ( ! function_exists( 'wc_get_coupon_id_by_code' ) ) {
+			return false;
+		}
+
+		$coupon_id = wc_get_coupon_id_by_code( $code );
+
+		if ( ! $coupon_id ) {
+			return false;
+		}
+
+		$coupon = new WC_Coupon( $coupon_id );
+		$coupon->set_usage_count( 0 );
+		$coupon->set_usage_limit( 1 );
+
+		if ( $expiry_date && strtotime( $expiry_date ) > time() ) {
+			$coupon->set_date_expires( $expiry_date );
+		} else {
+			$coupon->set_date_expires( null );
+		}
+
+		$coupon->save();
+
+		Bs_Custom_Mail_Health::log( sprintf( 'Coupon %s reaktiviert.', $code ), 'info' );
+
+		return true;
+	}
+
+	/**
+	 * Flag a partial refund for manual review.
+	 *
+	 * Whether a partially refunded order should invalidate its voucher, reduce
+	 * it, or leave it untouched is a business decision, not a technical one —
+	 * so this deliberately only raises a visible note instead of guessing.
+	 *
+	 * @since    3.0.0
+	 * @param    int    $order_id     Order ID.
+	 * @param    int    $refund_id    Refund ID.
+	 */
+	public function flag_partial_refund( $order_id, $refund_id ) {
+		global $wpdb;
+
+		$table_name = $wpdb->prefix . 'bs_custom_mail_vouchers';
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$codes = $wpdb->get_col( $wpdb->prepare( "SELECT voucher_code FROM {$table_name} WHERE order_id = %d AND status = 'active'", (int) $order_id ) );
+
+		if ( empty( $codes ) ) {
+			return;
+		}
+
+		$order = wc_get_order( $order_id );
+
+		if ( ! $order ) {
+			return;
+		}
+
+		$order->add_order_note(
+			sprintf(
+				/* translators: %s: comma separated voucher codes */
+				__( 'Teilerstattung: Die Wertgutscheine %s sind weiterhin gültig. Bitte manuell prüfen, ob sie entwertet oder angepasst werden sollen.', 'bs-custom-mail' ),
+				implode( ', ', $codes )
+			)
+		);
 	}
 
 	/**
