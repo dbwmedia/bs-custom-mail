@@ -117,6 +117,7 @@ class Bs_Custom_Mail_Voucher {
 		add_filter( 'wcpay_payment_request_is_product_supported', array( $this, 'filter_express_product_support' ), 10, 2 );
 		add_filter( 'wcpay_express_checkout_button_is_supported_product', array( $this, 'filter_express_product_support' ), 10, 2 );
 		add_filter( 'wcpay_payment_request_should_show_express_checkout_button', array( $this, 'filter_express_button_visibility' ), 10, 1 );
+		add_action( 'wp_head', array( $this, 'print_express_guard_styles' ), 99 );
 
 		// Voucher generation now runs exclusively through the async queue
 		// (Bs_Custom_Mail_Queue). No coupon, PDF or mail work happens in the
@@ -199,6 +200,41 @@ class Bs_Custom_Mail_Voucher {
 	 */
 	private function express_guard_enabled() {
 		return 'no' !== get_option( 'bs_custom_mail_express_guard', 'yes' );
+	}
+
+	/**
+	 * Hide express checkout buttons on voucher product pages.
+	 *
+	 * The PHP filters above only fire on the filter names a given WooPayments
+	 * release happens to use, and those were renamed when the plugin moved from
+	 * the Payment Request Button to the Express Checkout Element. The button is
+	 * injected by JavaScript after Stripe confirms the browser supports Apple
+	 * Pay, so it is not in the server rendered HTML at all. This rule is the
+	 * version independent backstop.
+	 *
+	 * @since    3.0.0
+	 */
+	public function print_express_guard_styles() {
+		if ( ! $this->express_guard_enabled() || ! function_exists( 'is_product' ) || ! is_product() ) {
+			return;
+		}
+
+		global $product;
+
+		if ( ! is_object( $product ) || ! self::is_voucher_product( $product->get_id() ) ) {
+			return;
+		}
+
+		echo '<style id="bs-voucher-express-guard">'
+			. '#wcpay-payment-request-wrapper,'
+			. '#wcpay-express-checkout-wrapper,'
+			. '#wcpay-payment-request-button-separator,'
+			. '#wcpay-express-checkout-button-separator,'
+			. '.wcpay-payment-request-wrapper,'
+			. '.wc-block-components-express-payment,'
+			. '.wc-block-components-express-payment-continue-rule'
+			. '{display:none !important;}'
+			. '</style>';
 	}
 
 	/**
