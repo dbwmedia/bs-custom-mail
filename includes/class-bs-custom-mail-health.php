@@ -112,7 +112,14 @@ class Bs_Custom_Mail_Health {
 		echo '<table class="widefat striped" style="max-width:820px;"><tbody>';
 		$this->row( __( 'Action Scheduler verfügbar', 'bs-custom-mail' ), $details['action_scheduler'] ? __( 'ja', 'bs-custom-mail' ) : __( 'nein', 'bs-custom-mail' ) );
 		$this->row( __( 'Überfällige Aufgaben (> 5 Min.)', 'bs-custom-mail' ), (string) $details['overdue_actions'] );
-		$this->row( __( 'Loopback (Seite erreicht sich selbst)', 'bs-custom-mail' ), false === $details['loopback'] ? __( 'blockiert', 'bs-custom-mail' ) : __( 'ok', 'bs-custom-mail' ) );
+		if ( null === $details['loopback'] ) {
+			$loopback_label = __( 'nicht prüfbar (Zugriffsschutz davor)', 'bs-custom-mail' );
+		} elseif ( false === $details['loopback'] ) {
+			$loopback_label = __( 'blockiert', 'bs-custom-mail' );
+		} else {
+			$loopback_label = __( 'ok', 'bs-custom-mail' );
+		}
+		$this->row( __( 'Loopback (Seite erreicht sich selbst)', 'bs-custom-mail' ), $loopback_label );
 		$this->row( 'DISABLE_WP_CRON', $details['wp_cron_disabled'] ? 'true' : 'false' );
 		$this->row(
 			__( 'Letzter externer Cron-Aufruf', 'bs-custom-mail' ),
@@ -528,6 +535,13 @@ class Bs_Custom_Mail_Health {
 		}
 
 		$code = (int) wp_remote_retrieve_response_code( $response );
+
+		// A staging site behind HTTP Basic Auth answers 401 to its own probe.
+		// That says nothing about whether loopback requests work — reporting it
+		// as "blocked" would be a false alarm, so it is inconclusive instead.
+		if ( in_array( $code, array( 401, 403 ), true ) ) {
+			return null;
+		}
 
 		// wp-cron.php answers 200 (or 503 while another run is in progress).
 		return in_array( $code, array( 200, 204, 503 ), true );
