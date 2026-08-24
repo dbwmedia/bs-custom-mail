@@ -530,8 +530,13 @@ class Bs_Custom_Mail_Queue {
 			// SLA watchdog: an order that has been sitting unprocessed for
 			// longer than the alert threshold is reported even if the sweep
 			// manages to heal it a moment later — a near miss is a signal.
-			$created = $order->get_date_created();
-			$age     = $created ? ( time() - $created->getTimestamp() ) : 0;
+			//
+			// The age is measured from the moment the order entered THIS
+			// pipeline, not from when it was created. Orders that predate the
+			// plugin update carry no queue stamp; they are picked up and
+			// settled silently instead of raising a burst of false alarms on
+			// the first sweep after a deployment.
+			$queued_at = (int) $order->get_meta( self::META_QUEUED_AT );
 
 			/**
 			 * Filter the age (in seconds) after which an unprocessed order raises an alert.
@@ -541,14 +546,14 @@ class Bs_Custom_Mail_Queue {
 			 */
 			$threshold = (int) apply_filters( 'bs_custom_mail_sla_threshold', 30 * MINUTE_IN_SECONDS );
 
-			if ( $age > $threshold && self::STATE_FAILED !== $state ) {
+			if ( $queued_at && ( time() - $queued_at ) > $threshold && self::STATE_FAILED !== $state ) {
 				Bs_Custom_Mail_Health::record_incident(
 					$order_id,
 					'sla_breach',
 					sprintf(
-						/* translators: 1: age of the order */
-						__( 'Bestellung ist seit %s bezahlt, aber noch nicht vollständig verarbeitet. Sicherheitsnetz greift.', 'bs-custom-mail' ),
-						human_time_diff( time() - $age, time() )
+						/* translators: 1: how long the order has been waiting */
+						__( 'Bestellung wartet seit %s auf die vollständige Verarbeitung. Sicherheitsnetz greift.', 'bs-custom-mail' ),
+						human_time_diff( $queued_at, time() )
 					)
 				);
 			}
