@@ -44,6 +44,16 @@ class Bs_Custom_Mail_Queue {
 	const HOOK_ORDER = 'bs_custom_mail_process_order';
 
 	/**
+	 * Action hook for a manual "resend the booking mail" job (mail step only).
+	 */
+	const HOOK_RESEND = 'bs_custom_mail_resend_order_mail';
+
+	/**
+	 * WooCommerce order action key for the resend button.
+	 */
+	const ORDER_ACTION_RESEND = 'bs_custom_mail_resend_mail';
+
+	/**
 	 * Action hook for the recurring backstop sweep.
 	 */
 	const HOOK_SWEEP = 'bs_custom_mail_safety_net_sweep';
@@ -202,6 +212,11 @@ class Bs_Custom_Mail_Queue {
 		// Phase B: the worker.
 		add_action( self::HOOK_ORDER, array( $this, 'run_order_job' ), 10, 1 );
 		add_action( self::HOOK_LEGACY, array( $this, 'run_order_job' ), 10, 1 );
+
+		// Manual resend of the booking mail from the order screen.
+		add_filter( 'woocommerce_order_actions', array( $this, 'add_order_actions' ), 10, 1 );
+		add_action( 'woocommerce_order_action_' . self::ORDER_ACTION_RESEND, array( $this, 'handle_resend_order_action' ), 10, 1 );
+		add_action( self::HOOK_RESEND, array( $this, 'run_resend_job' ), 10, 1 );
 
 		// Phase C: backstop.
 		add_action( self::HOOK_SWEEP, array( $this, 'run_sweep' ), 10, 0 );
@@ -760,6 +775,28 @@ class Bs_Custom_Mail_Queue {
 	}
 
 	/**
+	 * Oldest order creation time the sweep may look at.
+	 *
+	 * The window is SWEEP_WINDOW, but never older than 24 h before this
+	 * version first ran. Up to 3.0.0 the window was 24 h; without this floor
+	 * the first sweep after the update would suddenly pick up orders from the
+	 * two days before, including ones that were already settled by hand
+	 * (#4673 got its mail manually on 30.09.2026 and must not get it twice).
+	 *
+	 * @return int Unix timestamp.
+	 */
+	private static function sweep_since() {
+		$floor = (int) get_option( 'bs_custom_mail_sweep_floor', 0 );
+
+		if ( ! $floor ) {
+			$floor = time() - DAY_IN_SECONDS;
+			add_option( 'bs_custom_mail_sweep_floor', $floor, '', false );
+		}
+
+		return max( time() - self::SWEEP_WINDOW, $floor );
+	}
+
+	/**
 	 * Recurring backstop: catch orders whose job was never queued or never ran.
 	 *
 	 * Deliberately queries without a meta_query so the same code path works
@@ -776,7 +813,7 @@ class Bs_Custom_Mail_Queue {
 				'limit'        => 50,
 				'orderby'      => 'date',
 				'order'        => 'DESC',
-				'date_created' => '>' . ( time() - self::SWEEP_WINDOW ),
+				'date_created' => '>' . self::sweep_since(),
 			)
 		);
 
@@ -1032,6 +1069,106 @@ class Bs_Custom_Mail_Queue {
 		$order->add_order_note( __( 'Verarbeitung manuell neu angestoßen (läuft im Hintergrund).', 'bs-custom-mail' ) );
 
 		return $this->enqueue_order( (int) $order_id );
+	}
+
+	/**
+	 * Add "Buchungsmail erneut senden" to the order actions dropdown.
+	 *
+	 * @param array $actions Order actions.
+	 * @return array
+	 */
+	public function add_order_actions( $actions ) {
+		$actions[ self::ORDER_ACTION_RESEND ] = __( 'Buchungs-/Gutscheinmail erneut senden', 'bs-custom-mail' );
+		return $actions;
+	}
+
+	/**
+	 * Order action handler: queue the resend job, never send inline.
+	 *
+	 * @param WC_Order $order Order.
+	 */
+	public function handle_resend_order_action( $order ) {
+		if ( ! $order instanceof WC_Order || ! current_user_can( 'edit_shop_orders' ) ) {
+			return;
+		}
+
+		$args = array( $order->get_id() );
+
+		if ( function_exists( 'as_next_scheduled_action' ) && false !== as_next_scheduled_action( self::HOOK_RESEND, $args, self::GROUP ) ) {
+			return; // Already queued (double click).
+		}
+
+		if ( function_exists( 'as_enqueue_async_action' ) ) {
+			as_enqueue_async_action( self::HOOK_RESEND, $args, self::GROUP );
+		} else {
+			wp_schedule_single_event( time() + 1, self::HOOK_RESEND, $args );
+		}
+
+		$order->add_order_note(
+			sprintf(
+				/* translators: %s: user name */
+				__( 'Buchungsmail zum erneuten Versand eingeplant (von %s). Kein neuer Gutschein, keine neue Buchung.', 'bs-custom-mail' ),
+				wp_get_current_user()->display_name
+			)
+		);
+	}
+
+	/**
+	 * Worker for the resend job: mail step only, guarded like the main job.
+	 *
+	 * @param int $order_id Order ID.
+	 */
+	public function run_resend_job( $order_id ) {
+		$order_id = (int) $order_id;
+		$order    = wc_get_order( $order_id );
+
+		if ( ! $order ) {
+			return;
+		}
+
+		if ( ! $this->acquire_lock( $order_id ) ) {
+			as_schedule_single_action( time() + 60, self::HOOK_RESEND, array( $order_id ), self::GROUP );
+			return;
+		}
+
+		$this->begin_crash_guard( $order_id );
+		self::set_step( 'customer_mail' );
+
+		$result = array(
+			'sent'   => array(),
+			'failed' => array(),
+		);
+
+		try {
+			$result = $this->email_sender->resend_order_emails( $order_id );
+		} catch ( \Throwable $e ) {
+			$result['failed'][] = $e->getMessage();
+		} finally {
+			$this->end_crash_guard();
+			$this->release_lock( $order_id );
+		}
+
+		$order = wc_get_order( $order_id );
+
+		if ( $result['sent'] && ! $result['failed'] ) {
+			$note = sprintf(
+				/* translators: 1: recipient, 2: template keys */
+				__( 'Buchungsmail erneut an %1$s gesendet (Vorlage: %2$s).', 'bs-custom-mail' ),
+				$order->get_billing_email(),
+				implode( ', ', $result['sent'] )
+			);
+		} elseif ( ! $result['sent'] && ! $result['failed'] ) {
+			$note = __( 'Buchungsmail nicht erneut gesendet: Für die Produkte dieser Bestellung ist keine eigene Mail eingerichtet.', 'bs-custom-mail' );
+		} else {
+			$note = sprintf(
+				/* translators: 1: sent templates, 2: failed templates */
+				__( '⚠️ Erneuter Versand der Buchungsmail teilweise fehlgeschlagen. Gesendet: %1$s. Fehlgeschlagen: %2$s. Details im Log (WooCommerce → Status → Logs → bs-custom-mail).', 'bs-custom-mail' ),
+				$result['sent'] ? implode( ', ', $result['sent'] ) : '-',
+				implode( ', ', $result['failed'] )
+			);
+		}
+
+		$order->add_order_note( $note );
 	}
 
 	/**

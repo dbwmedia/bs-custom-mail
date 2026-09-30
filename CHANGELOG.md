@@ -33,7 +33,18 @@ WCPDF-Rechnung hat jeden Job mit „memory exhausted" beendet, rund 140 Fatals.
   die Bestellung ohne Verarbeitung.
 - **Doppelter Sweep**: Einplanen mit `$unique`, bestehende Duplikate werden
   stündlich geprüft und bereinigt.
-- Sicherheitsnetz-Fenster 24 h → 3 Tage.
+- Sicherheitsnetz-Fenster 24 h → 3 Tage, aber nie weiter zurück als 24 h vor
+  dem ersten Lauf von 3.0.1 (Option `bs_custom_mail_sweep_floor`). Sonst hätte
+  der erste Sweep nach dem Update Bestellungen der Vortage erneut angefasst,
+  auch von Hand versorgte wie #4673.
+
+### Neu
+
+- **Bestellaktion „Buchungs-/Gutscheinmail erneut senden"**: plant einen
+  Hintergrund-Job, der nur die Produktmail verschickt. Kein Coupon, kein
+  Gutschein-PDF, kein Statuswechsel, also auch keine Amelia-Buchung.
+  Bestellnotiz beim Einplanen und mit dem Ergebnis. Doppelklick plant nur
+  einen Job ein.
 - Warnmail-Betreff nennt nicht mehr pauschal „Gutschein".
 
 ## 3.0.0 — Zuverlässigkeits-Überarbeitung

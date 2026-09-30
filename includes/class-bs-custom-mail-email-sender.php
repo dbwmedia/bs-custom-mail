@@ -87,30 +87,11 @@ class Bs_Custom_Mail_Email_Sender {
 		$already = $order->get_meta( '_bs_custom_mail_templates' );
 		$already = is_array( $already ) ? $already : array();
 
-		// Explicitly request line items so shipping/fee items from other
-		// plugins never enter the loop without get_product().
-		$items   = $order->get_items( 'line_item' );
 		$handled = $already;
 		$failed  = false;
 
-		foreach ( $items as $item ) {
-			$product = $item->get_product();
-
-			if ( ! $product ) {
-				continue;
-			}
-
-			if ( 'yes' !== get_post_meta( $product->get_id(), '_bs_custom_mail_send_custom', true ) ) {
-				continue;
-			}
-
-			$template_key = get_post_meta( $product->get_id(), '_bs_custom_mail_template', true );
-
-			if ( empty( $template_key ) ) {
-				$template_key = $this->match_product_to_template( $product->get_name() );
-			}
-
-			if ( ! $template_key || in_array( $template_key, $handled, true ) ) {
+		foreach ( $this->get_mail_targets( $order ) as $template_key => $product ) {
+			if ( in_array( $template_key, $handled, true ) ) {
 				continue;
 			}
 
@@ -156,6 +137,89 @@ class Bs_Custom_Mail_Email_Sender {
 		$order->save();
 
 		return ! $failed;
+	}
+
+	/**
+	 * Resend the product mails of an order, ignoring the "already sent" flags.
+	 *
+	 * Mail step only: no coupon, no voucher PDF, no status change, so nothing
+	 * that listens to status changes (e.g. the Amelia booking) is triggered.
+	 *
+	 * @since  3.0.1
+	 * @param  int $order_id Order ID.
+	 * @return array { sent: string[], failed: string[] } Template keys.
+	 */
+	public function resend_order_emails( $order_id ) {
+		$result = array(
+			'sent'   => array(),
+			'failed' => array(),
+		);
+
+		$order = wc_get_order( $order_id );
+
+		if ( ! $order ) {
+			return $result;
+		}
+
+		foreach ( $this->get_mail_targets( $order ) as $template_key => $product ) {
+			if ( 'sent' === $this->send_product_email( $order, $product, $template_key ) ) {
+				$result['sent'][] = $template_key;
+			} else {
+				$result['failed'][] = $template_key;
+			}
+		}
+
+		// Keep the regular pipeline in sync, so it does not send them again.
+		if ( $result['sent'] ) {
+			$already = $order->get_meta( '_bs_custom_mail_templates' );
+			$already = is_array( $already ) ? $already : array();
+			$order->update_meta_data( '_bs_custom_mail_templates', array_values( array_unique( array_merge( $already, $result['sent'] ) ) ) );
+
+			if ( ! $result['failed'] ) {
+				$order->update_meta_data( '_bs_custom_mail_sent', true );
+				$order->update_meta_data( '_bs_custom_mail_sent_at', current_time( 'mysql' ) );
+			}
+
+			$order->save_meta_data();
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Product mails an order is entitled to, one per template.
+	 *
+	 * @param  WC_Order $order Order.
+	 * @return array Template key => WC_Product (first product using it).
+	 */
+	private function get_mail_targets( $order ) {
+		$targets = array();
+
+		// Explicitly request line items so shipping/fee items from other
+		// plugins never enter the loop without get_product().
+		foreach ( $order->get_items( 'line_item' ) as $item ) {
+			$product = $item->get_product();
+
+			if ( ! $product ) {
+				continue;
+			}
+
+			if ( 'yes' !== get_post_meta( $product->get_id(), '_bs_custom_mail_send_custom', true ) ) {
+				continue;
+			}
+
+			$template_key = get_post_meta( $product->get_id(), '_bs_custom_mail_template', true );
+
+			if ( empty( $template_key ) ) {
+				$template_key = $this->match_product_to_template( $product->get_name() );
+			}
+
+			if ( $template_key && ! isset( $targets[ $template_key ] ) ) {
+				$targets[ $template_key ] = $product;
+			}
+		}
+
+		return $targets;
 	}
 
 	/**
