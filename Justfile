@@ -86,74 +86,35 @@ clean:
     @echo "✅ Cleanup complete"
 
 # Create distribution ZIP
-dist: clean test build
-    @echo "📦 Installing production dependencies..."
-    composer install --no-dev --optimize-autoloader --quiet
-    
-    @echo "📦 Creating distribution package..."
-    mkdir -p dist
-    
-    # Create ZIP with only necessary files (including vendor for FPDF)
-    zip -r "dist/bs-custom-mail-v$(cat package.json | grep '"version"' | cut -d'"' -f4).zip" \
-        ./*.php \
-        ./includes/ \
-        ./admin/ \
-        ./public/ \
-        ./languages/ \
-        ./build/ \
-        ./vendor/ \
-        ./uninstall.php \
-        ./README.txt \
-        ./LICENSE.txt \
-        ./composer.json \
-        ./composer.lock \
-        -x "*/.*" \
-        -x "*/tests/*" \
-        -x "*/node_modules/*" \
-        -x "*/src/*" \
-        -x "*.map" \
-        -x "package*.json" \
-        -x "phpunit.xml" \
-        -x "jest.config.js" \
-        -x "tsconfig.json" \
-        -x "*.md"
-    
-    @echo "📦 Reinstalling dev dependencies..."
-    composer install --quiet
-    
+dist: clean test build package
     @echo "✅ Distribution package created in dist/"
 
-# Quick dist without tests
-dist-quick: clean build
-    @echo "📦 Installing production dependencies..."
+dist-quick: clean build package
+    @echo "✅ Distribution package created (quick)"
+
+# Build the install ZIP. The top-level folder MUST be the plugin slug:
+# WordPress names the plugin folder after it, and only then offers
+# "replace current version". A ZIP without it creates a second copy
+# (that is how bs-custom-mail-v2.0.0/ ended up on the live site).
+# The version is read from the plugin header, not package.json.
+package:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    version=$(sed -n 's/^[ *]*Version:[[:space:]]*//p' bs-custom-mail.php | head -1 | tr -d '[:space:]')
+    echo "📦 Packaging bs-custom-mail ${version}..."
     composer install --no-dev --optimize-autoloader --quiet
-    
-    @echo "📦 Creating distribution package (quick)..."
-    mkdir -p dist
-    
-    zip -r "dist/bs-custom-mail-v$(cat package.json | grep '"version"' | cut -d'"' -f4).zip" \
-        ./*.php \
-        ./includes/ \
-        ./admin/ \
-        ./public/ \
-        ./languages/ \
-        ./build/ \
-        ./vendor/ \
-        ./uninstall.php \
-        ./README.txt \
-        ./LICENSE.txt \
-        ./composer.json \
-        ./composer.lock \
-        -x "*/.*" \
-        -x "*/tests/*" \
-        -x "*/node_modules/*" \
-        -x "*/src/*" \
-        -x "*.map"
-    
-    @echo "📦 Reinstalling dev dependencies..."
+    rm -rf dist/bs-custom-mail
+    mkdir -p dist/bs-custom-mail
+    rsync -a \
+        --exclude '.*' --exclude '*.map' --exclude '*.md' \
+        --exclude 'tests/' --exclude 'node_modules/' --exclude 'src/' \
+        ./*.php includes admin public languages build vendor \
+        README.txt LICENSE.txt composer.json \
+        dist/bs-custom-mail/
+    (cd dist && rm -f "bs-custom-mail-${version}.zip" && zip -qr "bs-custom-mail-${version}.zip" bs-custom-mail)
+    rm -rf dist/bs-custom-mail
     composer install --quiet
-    
-    @echo "✅ Distribution package created"
+    echo "📦 dist/bs-custom-mail-${version}.zip"
 
 # Run all linters
 lint: lint-js lint-css
