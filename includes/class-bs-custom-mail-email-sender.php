@@ -258,18 +258,39 @@ class Bs_Custom_Mail_Email_Sender {
 		 * Filter the free memory (bytes) required before rendering the invoice.
 		 *
 		 * @since 3.0.1
-		 * @param int $bytes Default 96 MB.
+		 * Deliberately low: too high costs the invoice on every order, too low
+		 * costs one crash, which the next attempt handles without the invoice.
+		 *
+		 * @param int $bytes Default 48 MB.
 		 */
-		$needed = (int) apply_filters( 'bs_custom_mail_invoice_min_free_memory', 96 * MB_IN_BYTES );
+		$needed = (int) apply_filters( 'bs_custom_mail_invoice_min_free_memory', 48 * MB_IN_BYTES );
 		$limit  = wp_convert_hr_to_bytes( ini_get( 'memory_limit' ) );
+		$before = memory_get_usage( true );
 
-		if ( $limit > 0 && ( $limit - memory_get_usage( true ) ) < $needed ) {
+		// Telemetry to calibrate the threshold on real orders.
+		$this->log(
+			sprintf(
+				'Bestellung #%d: Speicher vor Rechnung %s von %s (frei %s, Schwelle %s).',
+				$order->get_id(),
+				size_format( $before ),
+				$limit > 0 ? size_format( $limit ) : 'unbegrenzt',
+				$limit > 0 ? size_format( $limit - $before ) : '-',
+				size_format( $needed )
+			)
+		);
+
+		if ( $limit > 0 && ( $limit - $before ) < $needed ) {
 			$this->skip_invoice( $order, 'low_memory', __( 'Zu wenig freier Arbeitsspeicher', 'bs-custom-mail' ) );
 			return '';
 		}
 
 		$order->update_meta_data( self::META_INVOICE_STARTED, time() );
 		$order->save_meta_data();
+
+		// PHP 8.2+: measure the invoice alone, not the whole request.
+		if ( function_exists( 'memory_reset_peak_usage' ) ) {
+			memory_reset_peak_usage();
+		}
 
 		if ( class_exists( 'Bs_Custom_Mail_Queue' ) ) {
 			Bs_Custom_Mail_Queue::set_step( 'invoice_pdf' );
@@ -307,6 +328,16 @@ class Bs_Custom_Mail_Email_Sender {
 		if ( class_exists( 'Bs_Custom_Mail_Queue' ) ) {
 			Bs_Custom_Mail_Queue::set_step( 'customer_mail' );
 		}
+
+		$this->log(
+			sprintf(
+				'Bestellung #%d: Speicher-Spitze bei Rechnung %s (%s), Rechnung %s.',
+				$order->get_id(),
+				size_format( memory_get_peak_usage( true ) ),
+				function_exists( 'memory_reset_peak_usage' ) ? 'nur Rechnungs-Schritt' : 'ganzer Request',
+				$path ? 'angehängt' : 'nicht angehängt'
+			)
+		);
 
 		$order->delete_meta_data( self::META_INVOICE_STARTED );
 		$order->save_meta_data();

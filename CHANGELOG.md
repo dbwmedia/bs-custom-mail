@@ -23,8 +23,10 @@ WCPDF-Rechnung hat jeden Job mit „memory exhausted" beendet, rund 140 Fatals.
   danach Status `failed`, genau ein Vorfall + eine Warnmail, dann Ruhe.
 - **Rechnung kann die Kundenmail nicht mehr blockieren**: Markierung vor dem
   Rendern; ist sie beim nächsten Versuch noch da, geht die Mail ohne Rechnung
-  raus (Bestellnotiz). Ebenso bei < 96 MB freiem Speicher
+  raus (Bestellnotiz). Ebenso bei < 48 MB freiem Speicher
   (Filter `bs_custom_mail_invoice_min_free_memory`) und bei Exceptions.
+- **Speicher-Telemetrie**: pro Bestellung stehen Speicher vor der Rechnung und
+  Spitze danach im Log `bs-custom-mail`, um die Schwelle zu kalibrieren.
 - **Fehlerursache wird erfasst**: Shutdown-Handler mit 1 MB Reserve speichert
   Meldung, Datei:Zeile, Schritt und Peak-Speicher. Erscheint im Vorfall, in der
   Warnmail und live im Banner („Versuch 2/3, Ursache: Speicher voll in …").
