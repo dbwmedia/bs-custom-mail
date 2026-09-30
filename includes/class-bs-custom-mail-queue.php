@@ -23,7 +23,10 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * Delivery guarantees:
  *  - Normal case: the async job runs within seconds of the status change.
- *  - Failure case: retries with exponential backoff (1/5/15/30 minutes).
+ *  - Failure case: retries with exponential backoff (1/5/15 minutes).
+ *  - Hard crashes (fatal error, memory exhausted) count as an attempt too:
+ *    the counter is persisted BEFORE the work starts, so a deterministic
+ *    crash stops after MAX_ATTEMPTS instead of looping forever.
  *  - Last resort: a recurring sweep picks up orders whose job was never even
  *    queued (e.g. the original request died before the status hook ran).
  *  - Nothing fails silently: after the final attempt an incident is recorded
@@ -79,6 +82,25 @@ class Bs_Custom_Mail_Queue {
 	 */
 	const META_QUEUED_AT = '_bs_cm_queued_at';
 
+	/**
+	 * Order meta: unix timestamp of the most recent attempt.
+	 */
+	const META_LAST_ATTEMPT = '_bs_cm_last_attempt';
+
+	/**
+	 * Order meta: set when an admin closed the order by hand ("Erledigt").
+	 */
+	const META_RESOLVED_BY_HAND = '_bs_cm_manually_resolved';
+
+	/**
+	 * Option prefix for the last fatal error of an order's job.
+	 *
+	 * Stored as a plain option rather than order meta: it is written from a
+	 * shutdown handler after a fatal, where loading and saving a WC_Order is
+	 * the last thing we want to depend on.
+	 */
+	const FATAL_OPTION_PREFIX = '_bs_cm_fatal_';
+
 	const STATE_PENDING = 'pending';
 	const STATE_DONE    = 'done';
 	const STATE_FAILED  = 'failed';
@@ -90,13 +112,51 @@ class Bs_Custom_Mail_Queue {
 
 	/**
 	 * Number of worker attempts before the order is declared failed.
+	 *
+	 * Crashed attempts count. Incident #4673 (09/2026) showed a deterministic
+	 * memory fatal being retried ~110 times a day because a crash never
+	 * reached the attempt counter.
 	 */
-	const MAX_ATTEMPTS = 4;
+	const MAX_ATTEMPTS = 3;
 
 	/**
 	 * Retry delays in seconds, indexed by the number of failed attempts.
 	 */
-	const BACKOFF = array( 60, 300, 900, 1800 );
+	const BACKOFF = array( 60, 300, 900 );
+
+	/**
+	 * How far back the sweep looks for unsettled orders.
+	 */
+	const SWEEP_WINDOW = 3 * DAY_IN_SECONDS;
+
+	/**
+	 * Order currently being processed in this request (for the shutdown handler).
+	 *
+	 * @var int
+	 */
+	private static $current_order = 0;
+
+	/**
+	 * Pipeline step currently running in this request (for the shutdown handler).
+	 *
+	 * @var string
+	 */
+	private static $current_step = '';
+
+	/**
+	 * Memory held back so the shutdown handler can still work after a
+	 * "memory exhausted" fatal.
+	 *
+	 * @var string|null
+	 */
+	private static $memory_reserve = null;
+
+	/**
+	 * Whether the shutdown handler is registered in this request.
+	 *
+	 * @var bool
+	 */
+	private static $shutdown_registered = false;
 
 	/**
 	 * Order statuses that must never be processed.
@@ -345,6 +405,11 @@ class Bs_Custom_Mail_Queue {
 			return true;
 		}
 
+		if ( self::STATE_FAILED === $order->get_meta( self::META_STATE ) && 'manual' !== $context ) {
+			// Escalated already; only an explicit retry may run it again.
+			return false;
+		}
+
 		if ( ! $this->acquire_lock( $order_id ) ) {
 			// Another process owns this order right now. Come back shortly
 			// rather than risk a parallel run.
@@ -352,18 +417,46 @@ class Bs_Custom_Mail_Queue {
 			return false;
 		}
 
+		// Count the attempt BEFORE doing any work. A fatal error below never
+		// returns to schedule_retry(), so this is the only place where a
+		// crashed attempt can be counted at all.
+		$attempts = (int) $order->get_meta( self::META_ATTEMPTS );
+
+		if ( $attempts >= self::MAX_ATTEMPTS ) {
+			$this->release_lock( $order_id );
+			$this->give_up( $order_id, __( 'Verarbeitung', 'bs-custom-mail' ) );
+			return false;
+		}
+
+		$order->update_meta_data( self::META_ATTEMPTS, $attempts + 1 );
+		$order->update_meta_data( self::META_LAST_ATTEMPT, time() );
+		$order->save_meta_data();
+
+		$this->begin_crash_guard( $order_id );
+
 		$vouchers_ok = false;
 		$emails_ok   = false;
 
 		try {
+			self::set_step( 'voucher' );
 			$vouchers_ok = $this->voucher->process_order_vouchers( $order_id, $context );
-			$emails_ok   = $this->email_sender->maybe_send_order_emails( $order_id );
+			self::set_step( 'customer_mail' );
+			$emails_ok = $this->email_sender->maybe_send_order_emails( $order_id );
 		} catch ( \Throwable $e ) {
+			self::store_error(
+				$order_id,
+				array(
+					'step' => self::$current_step,
+					'msg'  => $e->getMessage(),
+					'file' => basename( $e->getFile() ) . ':' . $e->getLine(),
+				)
+			);
 			Bs_Custom_Mail_Health::log(
 				sprintf( 'Verarbeitung von Bestellung #%d abgebrochen: %s', $order_id, $e->getMessage() ),
 				'error'
 			);
 		} finally {
+			$this->end_crash_guard();
 			$this->release_lock( $order_id );
 		}
 
@@ -390,12 +483,14 @@ class Bs_Custom_Mail_Queue {
 			return;
 		}
 
-		$attempts = (int) $order->get_meta( self::META_ATTEMPTS );
+		// The attempt of this very run is already counted.
+		$attempts = max( 0, (int) $order->get_meta( self::META_ATTEMPTS ) - 1 );
 
 		$order->update_meta_data( self::META_STATE, self::STATE_DONE );
 		$order->save();
 
 		Bs_Custom_Mail_Health::resolve_incidents( $order_id );
+		self::clear_error( $order_id );
 
 		if ( $attempts > 0 || 'job' !== $context ) {
 			$queued_at = (int) $order->get_meta( self::META_QUEUED_AT );
@@ -438,8 +533,8 @@ class Bs_Custom_Mail_Queue {
 			return;
 		}
 
-		$attempts = (int) $order->get_meta( self::META_ATTEMPTS ) + 1;
-		$order->update_meta_data( self::META_ATTEMPTS, $attempts );
+		// Already incremented at the start of the attempt.
+		$attempts = (int) $order->get_meta( self::META_ATTEMPTS );
 
 		$what = array();
 		if ( ! $vouchers_ok ) {
@@ -451,20 +546,7 @@ class Bs_Custom_Mail_Queue {
 		$what = implode( ' + ', $what );
 
 		if ( $attempts >= self::MAX_ATTEMPTS ) {
-			$order->update_meta_data( self::META_STATE, self::STATE_FAILED );
-			$order->save();
-
-			Bs_Custom_Mail_Health::record_incident(
-				$order_id,
-				'delivery_failed',
-				sprintf(
-					/* translators: 1: failing step, 2: attempt count */
-					__( '%1$s konnte nach %2$d Versuchen nicht zugestellt werden. Bitte manuell prüfen und erneut auslösen.', 'bs-custom-mail' ),
-					$what,
-					$attempts
-				)
-			);
-
+			$this->give_up( $order_id, $what );
 			return;
 		}
 
@@ -490,6 +572,194 @@ class Bs_Custom_Mail_Queue {
 	}
 
 	/**
+	 * Stop retrying an order: mark it failed, raise ONE incident, then stay quiet.
+	 *
+	 * @param int    $order_id Order ID.
+	 * @param string $what     Human readable description of the failing part.
+	 */
+	private function give_up( $order_id, $what ) {
+		$order = wc_get_order( $order_id );
+
+		if ( ! $order ) {
+			return;
+		}
+
+		$attempts = (int) $order->get_meta( self::META_ATTEMPTS );
+
+		$order->update_meta_data( self::META_STATE, self::STATE_FAILED );
+		$order->save();
+
+		$message = sprintf(
+			/* translators: 1: failing step, 2: attempt count */
+			__( '%1$s nach %2$d Versuchen aufgegeben. Es wird nicht mehr automatisch wiederholt.', 'bs-custom-mail' ),
+			$what,
+			$attempts
+		);
+
+		$cause = self::describe_error( self::get_error( $order_id ) );
+		if ( $cause ) {
+			$message .= ' ' . sprintf(
+				/* translators: %s: error description */
+				__( 'Letzter Fehler: %s.', 'bs-custom-mail' ),
+				$cause
+			);
+		}
+
+		// The SLA incident is superseded by this one.
+		Bs_Custom_Mail_Health::resolve_incidents( $order_id );
+		Bs_Custom_Mail_Health::record_incident( $order_id, 'delivery_failed', $message );
+	}
+
+	/**
+	 * Name the step currently running, so a fatal can be attributed to it.
+	 *
+	 * @param string $step Step key (voucher, customer_mail, invoice_pdf, ...).
+	 */
+	public static function set_step( $step ) {
+		self::$current_step = (string) $step;
+	}
+
+	/**
+	 * Arm the shutdown handler that records a fatal error for this order.
+	 *
+	 * @param int $order_id Order ID.
+	 */
+	private function begin_crash_guard( $order_id ) {
+		self::$current_order  = (int) $order_id;
+		self::$current_step   = '';
+		self::$memory_reserve = str_repeat( ' ', 1024 * 1024 );
+
+		if ( ! self::$shutdown_registered ) {
+			register_shutdown_function( array( __CLASS__, 'handle_shutdown' ) );
+			self::$shutdown_registered = true;
+		}
+	}
+
+	/**
+	 * Disarm the shutdown handler after the job returned normally.
+	 */
+	private function end_crash_guard() {
+		self::$current_order  = 0;
+		self::$current_step   = '';
+		self::$memory_reserve = null;
+	}
+
+	/**
+	 * Shutdown handler: persist the cause of a fatal that killed the job.
+	 */
+	public static function handle_shutdown() {
+		self::$memory_reserve = null;
+
+		if ( ! self::$current_order ) {
+			return;
+		}
+
+		$error = error_get_last();
+
+		if ( ! $error || ! in_array( $error['type'], array( E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR ), true ) ) {
+			return;
+		}
+
+		self::store_error(
+			self::$current_order,
+			array(
+				'step' => self::$current_step,
+				'msg'  => $error['message'],
+				'file' => basename( $error['file'] ) . ':' . $error['line'],
+				'peak' => memory_get_peak_usage( true ),
+			)
+		);
+	}
+
+	/**
+	 * Persist the last error of an order's job.
+	 *
+	 * @param int   $order_id Order ID.
+	 * @param array $error    step, msg, file, peak.
+	 */
+	private static function store_error( $order_id, $error ) {
+		global $wpdb;
+
+		$error['msg'] = function_exists( 'mb_substr' ) ? mb_substr( (string) $error['msg'], 0, 300 ) : substr( (string) $error['msg'], 0, 300 );
+		$error['at']  = time();
+
+		// Direct query: cheap, no object cache, safe inside a shutdown handler.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->query(
+			$wpdb->prepare(
+				"REPLACE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no')",
+				self::FATAL_OPTION_PREFIX . (int) $order_id,
+				wp_json_encode( $error )
+			)
+		);
+	}
+
+	/**
+	 * Read the last recorded error of an order's job.
+	 *
+	 * @param int $order_id Order ID.
+	 * @return array|null
+	 */
+	public static function get_error( $order_id ) {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$raw = $wpdb->get_var(
+			$wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", self::FATAL_OPTION_PREFIX . (int) $order_id )
+		);
+
+		$error = $raw ? json_decode( $raw, true ) : null;
+
+		return is_array( $error ) ? $error : null;
+	}
+
+	/**
+	 * Forget the recorded error of an order.
+	 *
+	 * @param int $order_id Order ID.
+	 */
+	private static function clear_error( $order_id ) {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->delete( $wpdb->options, array( 'option_name' => self::FATAL_OPTION_PREFIX . (int) $order_id ), array( '%s' ) );
+	}
+
+	/**
+	 * Human readable one-liner for a stored error.
+	 *
+	 * @param array|null $error Stored error.
+	 * @return string Empty when there is nothing to say.
+	 */
+	public static function describe_error( $error ) {
+		if ( empty( $error['msg'] ) ) {
+			return '';
+		}
+
+		$steps = array(
+			'voucher'       => __( 'Gutschein', 'bs-custom-mail' ),
+			'customer_mail' => __( 'Kundenmail', 'bs-custom-mail' ),
+			'invoice_pdf'   => __( 'Rechnungs-PDF', 'bs-custom-mail' ),
+		);
+
+		$msg = false !== stripos( $error['msg'], 'Allowed memory size' )
+			? __( 'Speicher voll', 'bs-custom-mail' )
+			: $error['msg'];
+
+		$parts = array( $msg );
+
+		if ( ! empty( $error['file'] ) ) {
+			$parts[] = sprintf( /* translators: %s: file:line */ __( 'in %s', 'bs-custom-mail' ), $error['file'] );
+		}
+
+		if ( ! empty( $error['step'] ) ) {
+			$parts[] = '(' . ( isset( $steps[ $error['step'] ] ) ? $steps[ $error['step'] ] : $error['step'] ) . ')';
+		}
+
+		return implode( ' ', $parts );
+	}
+
+	/**
 	 * Recurring backstop: catch orders whose job was never queued or never ran.
 	 *
 	 * Deliberately queries without a meta_query so the same code path works
@@ -506,7 +776,7 @@ class Bs_Custom_Mail_Queue {
 				'limit'        => 50,
 				'orderby'      => 'date',
 				'order'        => 'DESC',
-				'date_created' => '>' . ( time() - DAY_IN_SECONDS ),
+				'date_created' => '>' . ( time() - self::SWEEP_WINDOW ),
 			)
 		);
 
@@ -595,6 +865,8 @@ class Bs_Custom_Mail_Queue {
 			return;
 		}
 
+		$this->dedupe_recurring_actions();
+
 		if ( false === as_next_scheduled_action( self::HOOK_SWEEP, array(), self::GROUP ) ) {
 			/**
 			 * Filter the interval (in seconds) of the recurring safety-net sweep.
@@ -603,11 +875,54 @@ class Bs_Custom_Mail_Queue {
 			 * @param int $interval Interval in seconds. Default 10 minutes.
 			 */
 			$interval = (int) apply_filters( 'bs_custom_mail_safety_net_sweep_interval', 10 * MINUTE_IN_SECONDS );
-			as_schedule_recurring_action( time() + 60, $interval, self::HOOK_SWEEP, array(), self::GROUP );
+			// $unique = true: two concurrent requests on "init" used to both
+			// see "nothing scheduled" and each add a sweep.
+			as_schedule_recurring_action( time() + 60, $interval, self::HOOK_SWEEP, array(), self::GROUP, true );
 		}
 
 		if ( false === as_next_scheduled_action( self::HOOK_CLEANUP, array(), self::GROUP ) ) {
-			as_schedule_recurring_action( time() + HOUR_IN_SECONDS, DAY_IN_SECONDS, self::HOOK_CLEANUP, array(), self::GROUP );
+			as_schedule_recurring_action( time() + HOUR_IN_SECONDS, DAY_IN_SECONDS, self::HOOK_CLEANUP, array(), self::GROUP, true );
+		}
+	}
+
+	/**
+	 * Remove duplicate recurring actions left behind by earlier versions.
+	 *
+	 * Checked at most once an hour; cheap when there is nothing to do. Runs
+	 * before scheduling, so whatever it removes is re-created right after.
+	 */
+	private function dedupe_recurring_actions() {
+		if ( ! function_exists( 'as_get_scheduled_actions' ) || ! function_exists( 'as_unschedule_all_actions' ) ) {
+			return;
+		}
+
+		if ( get_transient( 'bs_custom_mail_dedupe_checked' ) ) {
+			return;
+		}
+
+		set_transient( 'bs_custom_mail_dedupe_checked', 1, HOUR_IN_SECONDS );
+
+		foreach ( array( self::HOOK_SWEEP, self::HOOK_CLEANUP ) as $hook ) {
+			$pending = as_get_scheduled_actions(
+				array(
+					'hook'     => $hook,
+					'group'    => self::GROUP,
+					'status'   => 'pending',
+					'per_page' => 5,
+				),
+				'ids'
+			);
+
+			if ( count( $pending ) <= 1 ) {
+				continue;
+			}
+
+			as_unschedule_all_actions( $hook, array(), self::GROUP );
+
+			Bs_Custom_Mail_Health::log(
+				sprintf( '%d doppelte geplante Aufgaben "%s" entfernt, wird neu eingeplant.', count( $pending ), $hook ),
+				'warning'
+			);
 		}
 	}
 
@@ -691,10 +1006,12 @@ class Bs_Custom_Mail_Queue {
 	/**
 	 * Re-run processing for an order on demand (admin action).
 	 *
-	 * Clears the failure state so the pipeline gets a genuinely fresh start.
+	 * Resets the attempt counter and queues an async job. Never processes in
+	 * the admin request itself: a PDF or mail fatal would otherwise end in the
+	 * WordPress error screen (seen with #4673).
 	 *
 	 * @param int $order_id Order ID.
-	 * @return bool
+	 * @return bool Whether a job is queued.
 	 */
 	public function retry_now( $order_id ) {
 		$order = wc_get_order( (int) $order_id );
@@ -705,8 +1022,40 @@ class Bs_Custom_Mail_Queue {
 
 		$order->update_meta_data( self::META_ATTEMPTS, 0 );
 		$order->update_meta_data( self::META_STATE, self::STATE_PENDING );
+		// A manual retry usually follows a fix (e.g. a smaller invoice logo):
+		// give the invoice another chance. If it still crashes, the next
+		// attempt falls back to sending without it again.
+		$order->delete_meta_data( Bs_Custom_Mail_Email_Sender::META_INVOICE_STARTED );
+		$order->delete_meta_data( Bs_Custom_Mail_Email_Sender::META_INVOICE_SKIPPED );
 		$order->save();
 
-		return $this->process_order( (int) $order_id, 'manual' );
+		$order->add_order_note( __( 'Verarbeitung manuell neu angestoßen (läuft im Hintergrund).', 'bs-custom-mail' ) );
+
+		return $this->enqueue_order( (int) $order_id );
+	}
+
+	/**
+	 * Close an order by hand without processing it ("Erledigt").
+	 *
+	 * Marks it settled so neither the sweep nor the SLA watchdog touches it
+	 * again. Used when the shop owner has taken care of the customer manually.
+	 *
+	 * @param int $order_id Order ID.
+	 */
+	public function resolve_by_hand( $order_id ) {
+		$order = wc_get_order( (int) $order_id );
+
+		if ( ! $order ) {
+			return;
+		}
+
+		$order->update_meta_data( self::META_STATE, self::STATE_DONE );
+		$order->update_meta_data( self::META_RESOLVED_BY_HAND, time() );
+		$order->save();
+
+		$order->add_order_note( __( 'Zustellung manuell als erledigt markiert. Es findet keine automatische Verarbeitung mehr statt.', 'bs-custom-mail' ) );
+
+		Bs_Custom_Mail_Health::resolve_incidents( $order_id );
+		self::clear_error( $order_id );
 	}
 }

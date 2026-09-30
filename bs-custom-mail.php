@@ -16,7 +16,7 @@
  * Plugin Name:       Bootsschule Mail & Vouchers
  * Plugin URI:        https://jltzbrg.com
  * Description:       Automatisierte E-Mails und Wertgutscheine für Bootsschule Berlin Köpenick. Sendet personalisierte Bestellbestätigungen und erstellt PDF-Gutscheine.
- * Version:           3.0.0
+ * Version:           3.0.1
  * Author:            Julio Litzenberg
  * Author URI:        https://jltzbrg.com/
  * License:           GPL-2.0+
@@ -37,7 +37,7 @@ if ( ! defined( 'WPINC' ) ) {
  * Start at version 1.0.0 and use SemVer - https://semver.org
  * Rename this for your plugin and update it as you release new versions.
  */
-define( 'BS_CUSTOM_MAIL_VERSION', '3.0.0' );
+define( 'BS_CUSTOM_MAIL_VERSION', '3.0.1' );
 
 /**
  * Declare compatibility with WooCommerce High-Performance Order Storage.

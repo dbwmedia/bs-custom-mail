@@ -252,12 +252,18 @@ class Bs_Custom_Mail {
 		$this->queue = new Bs_Custom_Mail_Queue( $voucher, $email_sender );
 		$this->queue->register_hooks();
 
-		// Manual retry from the incident notice.
+		// Incident actions: "Erneut versuchen" (async) and "Erledigt".
 		$queue = $this->queue;
 		add_action(
 			'bs_custom_mail_manual_retry',
 			function ( $order_id ) use ( $queue ) {
 				$queue->retry_now( $order_id );
+			}
+		);
+		add_action(
+			'bs_custom_mail_manual_resolve',
+			function ( $order_id ) use ( $queue ) {
+				$queue->resolve_by_hand( $order_id );
 			}
 		);
 

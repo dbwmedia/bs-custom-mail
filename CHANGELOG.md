@@ -1,5 +1,41 @@
 # Changelog
 
+## 3.0.1 - Dauerfehler stoppen, Kundenmail zuerst
+
+Anlass: Vorfall #4671/#4673 (26.-30.09.2026). Ein zu großes PNG-Logo in der
+WCPDF-Rechnung hat jeden Job mit „memory exhausted" beendet, rund 140 Fatals.
+
+### Ursachen im Code
+
+- Versuche wurden erst NACH der Arbeit gezählt. Ein Fatal kam nie dort an, der
+  Zähler blieb bei 0, das Sicherheitsnetz startete endlos neu.
+- Die Rechnung wird in `send_product_email()` für JEDE Produktmail per
+  `wcpdf_get_document()->get_pdf()` erzeugt, auch ohne Vorlagen-Anhänge. Ein
+  Speicher-Fatal dort ist nicht abfangbar und riss die Kundenmail mit.
+- „erledigt & erneut versuchen" löschte den Vorfall und verarbeitete dann
+  synchron im Admin-Request (Fehlerseite).
+- Das Sicherheitsnetz sah nur Bestellungen der letzten 24 h. Deshalb endeten
+  die Versuche für #4673 am 28.09. gegen 18:20 still, nicht wegen des Klicks.
+
+### Behoben
+
+- **Versuchszähler vor der Arbeit** gespeichert, max. 3 Versuche (1/5/15 Min.),
+  danach Status `failed`, genau ein Vorfall + eine Warnmail, dann Ruhe.
+- **Rechnung kann die Kundenmail nicht mehr blockieren**: Markierung vor dem
+  Rendern; ist sie beim nächsten Versuch noch da, geht die Mail ohne Rechnung
+  raus (Bestellnotiz). Ebenso bei < 96 MB freiem Speicher
+  (Filter `bs_custom_mail_invoice_min_free_memory`) und bei Exceptions.
+- **Fehlerursache wird erfasst**: Shutdown-Handler mit 1 MB Reserve speichert
+  Meldung, Datei:Zeile, Schritt und Peak-Speicher. Erscheint im Vorfall, in der
+  Warnmail und live im Banner („Versuch 2/3, Ursache: Speicher voll in …").
+- **Zwei getrennte Admin-Aktionen**: „Erneut versuchen" plant einen
+  Hintergrund-Job (Vorfall bleibt offen bis zum Erfolg), „Erledigt" schließt
+  die Bestellung ohne Verarbeitung.
+- **Doppelter Sweep**: Einplanen mit `$unique`, bestehende Duplikate werden
+  stündlich geprüft und bereinigt.
+- Sicherheitsnetz-Fenster 24 h → 3 Tage.
+- Warnmail-Betreff nennt nicht mehr pauschal „Gutschein".
+
 ## 3.0.0 — Zuverlässigkeits-Überarbeitung
 
 Behebt die Ursache wiederkehrender Vorfälle, bei denen eine Zahlung durchlief,

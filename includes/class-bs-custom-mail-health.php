@@ -62,7 +62,10 @@ class Bs_Custom_Mail_Health {
 	 */
 	public function register_hooks() {
 		add_action( 'admin_notices', array( $this, 'render_admin_notices' ) );
-		add_action( 'admin_post_bs_custom_mail_dismiss_incident', array( $this, 'handle_dismiss_incident' ) );
+		add_action( 'admin_post_bs_custom_mail_retry_incident', array( $this, 'handle_retry_incident' ) );
+		add_action( 'admin_post_bs_custom_mail_resolve_incident', array( $this, 'handle_resolve_incident' ) );
+		// Pre-3.0.1 links (open admin tabs) behave like "Erneut versuchen".
+		add_action( 'admin_post_bs_custom_mail_dismiss_incident', array( $this, 'handle_retry_incident' ) );
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 		add_action( 'admin_menu', array( $this, 'register_admin_page' ), 20 );
 	}
@@ -152,10 +155,6 @@ class Bs_Custom_Mail_Health {
 
 			foreach ( array_reverse( $incidents, true ) as $key => $incident ) {
 				$order = wc_get_order( $incident['order_id'] );
-				$url   = wp_nonce_url(
-					admin_url( 'admin-post.php?action=bs_custom_mail_dismiss_incident&incident=' . rawurlencode( $key ) ),
-					'bs_custom_mail_dismiss_incident'
-				);
 
 				echo '<tr><td>';
 				if ( $order ) {
@@ -163,9 +162,15 @@ class Bs_Custom_Mail_Health {
 				} else {
 					echo esc_html( $incident['order_id'] );
 				}
-				echo '</td><td>' . esc_html( $incident['message'] ) . '</td>';
+				echo '</td><td>' . esc_html( $incident['message'] ) . ' ' . esc_html( self::incident_status( $incident ) ) . '</td>';
 				echo '<td>' . esc_html( date_i18n( 'd.m.Y H:i', (int) $incident['time'] ) ) . '</td>';
-				printf( '<td><a class="button" href="%s">%s</a></td>', esc_url( $url ), esc_html__( 'Erneut versuchen', 'bs-custom-mail' ) );
+				printf(
+					'<td style="white-space:nowrap;"><a class="button" href="%s">%s</a> <a class="button-link" href="%s">%s</a></td>',
+					esc_url( self::incident_action_url( 'retry', $key ) ),
+					esc_html__( 'Erneut versuchen', 'bs-custom-mail' ),
+					esc_url( self::incident_action_url( 'resolve', $key ) ),
+					esc_html__( 'Erledigt', 'bs-custom-mail' )
+				);
 				echo '</tr>';
 			}
 
@@ -319,7 +324,7 @@ class Bs_Custom_Mail_Health {
 
 		$subject = sprintf(
 			/* translators: %s: order number */
-			__( '[Aktion nötig] Gutschein-Zustellung fehlgeschlagen — Bestellung %s', 'bs-custom-mail' ),
+			__( '[Aktion nötig] Bestellung %s wurde nicht vollständig verarbeitet', 'bs-custom-mail' ),
 			$order ? $order->get_order_number() : $order_id
 		);
 
@@ -357,18 +362,17 @@ class Bs_Custom_Mail_Health {
 			foreach ( array_reverse( $incidents, true ) as $key => $incident ) {
 				$order = wc_get_order( $incident['order_id'] );
 				$label = $order ? $order->get_order_number() : $incident['order_id'];
-				$url   = wp_nonce_url(
-					admin_url( 'admin-post.php?action=bs_custom_mail_dismiss_incident&incident=' . rawurlencode( $key ) ),
-					'bs_custom_mail_dismiss_incident'
-				);
 
 				printf(
-					'<li><strong>#%1$s</strong> — %2$s %3$s &middot; <a href="%4$s">%5$s</a></li>',
+					'<li><strong>#%1$s</strong> — %2$s %3$s %4$s &middot; <a href="%5$s">%6$s</a> &middot; <a href="%7$s">%8$s</a></li>',
 					esc_html( $label ),
 					esc_html( $incident['message'] ),
+					esc_html( self::incident_status( $incident ) ),
 					$order ? '<a href="' . esc_url( $order->get_edit_order_url() ) . '">' . esc_html__( 'Bestellung öffnen', 'bs-custom-mail' ) . '</a>' : '',
-					esc_url( $url ),
-					esc_html__( 'erledigt & erneut versuchen', 'bs-custom-mail' )
+					esc_url( self::incident_action_url( 'retry', $key ) ),
+					esc_html__( 'erneut versuchen', 'bs-custom-mail' ),
+					esc_url( self::incident_action_url( 'resolve', $key ) ),
+					esc_html__( 'erledigt (von Hand versorgt)', 'bs-custom-mail' )
 				);
 			}
 
@@ -387,26 +391,118 @@ class Bs_Custom_Mail_Health {
 	}
 
 	/**
-	 * Dismiss an incident and immediately retry the order.
+	 * Nonce protected URL for an incident action.
+	 *
+	 * @param string $action "retry" or "resolve".
+	 * @param string $key    Incident key.
+	 * @return string
 	 */
-	public function handle_dismiss_incident() {
+	private static function incident_action_url( $action, $key ) {
+		$hook = 'bs_custom_mail_' . $action . '_incident';
+
+		return wp_nonce_url(
+			admin_url( 'admin-post.php?action=' . $hook . '&incident=' . rawurlencode( $key ) ),
+			$hook
+		);
+	}
+
+	/**
+	 * Live status line for an incident: attempts and last known cause.
+	 *
+	 * Computed on every render, so it never shows a frozen state.
+	 *
+	 * @param array $incident Incident record.
+	 * @return string
+	 */
+	private static function incident_status( $incident ) {
+		$order = wc_get_order( $incident['order_id'] );
+
+		if ( ! $order || ! class_exists( 'Bs_Custom_Mail_Queue' ) ) {
+			return '';
+		}
+
+		$parts    = array();
+		$attempts = (int) $order->get_meta( Bs_Custom_Mail_Queue::META_ATTEMPTS );
+		$last     = (int) $order->get_meta( Bs_Custom_Mail_Queue::META_LAST_ATTEMPT );
+
+		if ( $attempts ) {
+			$parts[] = sprintf(
+				/* translators: 1: attempts so far, 2: maximum attempts */
+				__( 'Versuch %1$d/%2$d', 'bs-custom-mail' ),
+				$attempts,
+				Bs_Custom_Mail_Queue::MAX_ATTEMPTS
+			);
+		}
+
+		if ( $last ) {
+			$parts[] = sprintf(
+				/* translators: %s: human readable time difference */
+				__( 'letzter Versuch vor %s', 'bs-custom-mail' ),
+				human_time_diff( $last, time() )
+			);
+		}
+
+		$cause = Bs_Custom_Mail_Queue::describe_error( Bs_Custom_Mail_Queue::get_error( $incident['order_id'] ) );
+
+		// give_up() already puts the cause into the message.
+		if ( $cause && false === strpos( $incident['message'], $cause ) ) {
+			$parts[] = sprintf( /* translators: %s: error description */ __( 'Ursache: %s', 'bs-custom-mail' ), $cause );
+		}
+
+		return $parts ? '(' . implode( ', ', $parts ) . ')' : '';
+	}
+
+	/**
+	 * Read the incident an admin action refers to, after the security checks.
+	 *
+	 * @param string $hook Action hook, used as nonce action.
+	 * @return int Order ID, 0 when the incident no longer exists.
+	 */
+	private function incident_order_from_request( $hook ) {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( esc_html__( 'Keine Berechtigung.', 'bs-custom-mail' ) );
 		}
 
-		check_admin_referer( 'bs_custom_mail_dismiss_incident' );
+		check_admin_referer( $hook );
 
 		$key       = isset( $_GET['incident'] ) ? sanitize_text_field( wp_unslash( $_GET['incident'] ) ) : '';
 		$incidents = get_option( self::OPTION_INCIDENTS, array() );
 
-		if ( is_array( $incidents ) && isset( $incidents[ $key ] ) ) {
-			$order_id = (int) $incidents[ $key ]['order_id'];
-			unset( $incidents[ $key ] );
-			update_option( self::OPTION_INCIDENTS, $incidents, false );
+		if ( ! is_array( $incidents ) || ! isset( $incidents[ $key ] ) ) {
+			return 0;
+		}
 
-			if ( $order_id ) {
-				do_action( 'bs_custom_mail_manual_retry', $order_id );
-			}
+		return (int) $incidents[ $key ]['order_id'];
+	}
+
+	/**
+	 * "Erneut versuchen": queue a fresh async run. The incident stays open
+	 * until the job actually succeeds (mark_done() resolves it).
+	 */
+	public function handle_retry_incident() {
+		// Pre-3.0.1 links carry the old nonce action.
+		$hook = isset( $_GET['action'] ) && 'bs_custom_mail_dismiss_incident' === $_GET['action']
+			? 'bs_custom_mail_dismiss_incident'
+			: 'bs_custom_mail_retry_incident';
+
+		$order_id = $this->incident_order_from_request( $hook );
+
+		if ( $order_id ) {
+			do_action( 'bs_custom_mail_manual_retry', $order_id );
+		}
+
+		wp_safe_redirect( wp_get_referer() ? wp_get_referer() : admin_url() );
+		exit;
+	}
+
+	/**
+	 * "Erledigt": the customer was taken care of by hand. No processing.
+	 */
+	public function handle_resolve_incident() {
+		$order_id = $this->incident_order_from_request( 'bs_custom_mail_resolve_incident' );
+
+		if ( $order_id ) {
+			do_action( 'bs_custom_mail_manual_resolve', $order_id );
 		}
 
 		wp_safe_redirect( wp_get_referer() ? wp_get_referer() : admin_url() );

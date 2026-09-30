@@ -159,6 +159,124 @@ class Bs_Custom_Mail_Email_Sender {
 	}
 
 	/**
+	 * Order meta: set right before the invoice is rendered, removed after.
+	 *
+	 * Still present on the next attempt = the previous attempt died inside
+	 * the invoice renderer. Then the mail goes out without the invoice.
+	 */
+	const META_INVOICE_STARTED = '_bs_cm_invoice_started';
+
+	/**
+	 * Order meta: why the invoice was left out (note is written only once).
+	 */
+	const META_INVOICE_SKIPPED = '_bs_cm_invoice_skipped';
+
+	/**
+	 * Render the WCPDF invoice into a temporary file, unless that is unsafe.
+	 *
+	 * exists() is intentionally NOT checked: for new orders the invoice has
+	 * never been generated yet, so it is always rendered on the fly.
+	 *
+	 * @param WC_Order $order Order.
+	 * @return string Path of the temporary PDF, or "" when not attached.
+	 */
+	private function maybe_render_invoice( $order ) {
+		if ( ! function_exists( 'wcpdf_get_document' ) ) {
+			return '';
+		}
+
+		if ( $order->get_meta( self::META_INVOICE_STARTED ) ) {
+			$this->skip_invoice( $order, 'crashed', __( 'Der vorige Versuch ist beim Erzeugen der Rechnung abgestürzt', 'bs-custom-mail' ) );
+			return '';
+		}
+
+		/**
+		 * Filter the free memory (bytes) required before rendering the invoice.
+		 *
+		 * @since 3.0.1
+		 * @param int $bytes Default 96 MB.
+		 */
+		$needed = (int) apply_filters( 'bs_custom_mail_invoice_min_free_memory', 96 * MB_IN_BYTES );
+		$limit  = wp_convert_hr_to_bytes( ini_get( 'memory_limit' ) );
+
+		if ( $limit > 0 && ( $limit - memory_get_usage( true ) ) < $needed ) {
+			$this->skip_invoice( $order, 'low_memory', __( 'Zu wenig freier Arbeitsspeicher', 'bs-custom-mail' ) );
+			return '';
+		}
+
+		$order->update_meta_data( self::META_INVOICE_STARTED, time() );
+		$order->save_meta_data();
+
+		if ( class_exists( 'Bs_Custom_Mail_Queue' ) ) {
+			Bs_Custom_Mail_Queue::set_step( 'invoice_pdf' );
+		}
+
+		$path = '';
+
+		try {
+			$invoice = wcpdf_get_document( 'invoice', $order );
+
+			if ( $invoice ) {
+				$tmp_dir = trailingslashit( wp_upload_dir()['basedir'] ) . 'wpo_wcpdf_tmp/';
+				if ( ! is_dir( $tmp_dir ) ) {
+					wp_mkdir_p( $tmp_dir );
+				}
+
+				// The unique suffix prevents two concurrent sends from
+				// overwriting each other's temporary invoice.
+				$candidate   = $tmp_dir . 'invoice-' . $order->get_id() . '-' . uniqid( '', true ) . '.pdf';
+				$pdf_content = $invoice->get_pdf();
+
+				if ( $pdf_content ) {
+					// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+					file_put_contents( $candidate, $pdf_content );
+					if ( file_exists( $candidate ) ) {
+						$path = $candidate;
+					}
+				}
+			}
+		} catch ( \Throwable $e ) {
+			// Catchable failure: send without invoice, but say so.
+			$this->skip_invoice( $order, 'error', $e->getMessage() );
+		}
+
+		if ( class_exists( 'Bs_Custom_Mail_Queue' ) ) {
+			Bs_Custom_Mail_Queue::set_step( 'customer_mail' );
+		}
+
+		$order->delete_meta_data( self::META_INVOICE_STARTED );
+		$order->save_meta_data();
+
+		return $path;
+	}
+
+	/**
+	 * Record that the invoice was left out, once per order.
+	 *
+	 * @param WC_Order $order  Order.
+	 * @param string   $code   Machine readable reason.
+	 * @param string   $reason Human readable reason.
+	 */
+	private function skip_invoice( $order, $code, $reason ) {
+		$this->log( sprintf( 'Bestellung #%d: Rechnung nicht angehängt (%s): %s', $order->get_id(), $code, $reason ), 'warning' );
+
+		if ( $order->get_meta( self::META_INVOICE_SKIPPED ) ) {
+			return;
+		}
+
+		$order->update_meta_data( self::META_INVOICE_SKIPPED, $code );
+		$order->save_meta_data();
+
+		$order->add_order_note(
+			sprintf(
+				/* translators: %s: reason */
+				__( 'Die Rechnungs-PDF wird der Buchungsmail nicht angehängt (%s). Bitte die Rechnung separat schicken.', 'bs-custom-mail' ),
+				$reason
+			)
+		);
+	}
+
+	/**
 	 * Write a pipeline log entry.
 	 *
 	 * @since    2.1.0
@@ -269,35 +387,13 @@ class Bs_Custom_Mail_Email_Sender {
 		$attachments       = array_merge( $template_attachments, $product_attachments, $legal_attachments );
 		$attachment_data   = array_merge( $template_attachment_data, $product_attachment_data );
 
-		// Attach PDF invoice from "PDF Invoices & Packing Slips for WooCommerce" if available.
-		// Note: exists() is intentionally NOT checked — for new orders the invoice has
-		// never been generated yet, so exists() would return false and skip attachment.
-		// Instead we always generate the PDF on-the-fly via get_pdf().
-		$tmp_invoice_path = '';
-		try {
-			if ( function_exists( 'wcpdf_get_document' ) ) {
-				$invoice = wcpdf_get_document( 'invoice', $order );
-				if ( $invoice ) {
-					$tmp_dir = trailingslashit( wp_upload_dir()['basedir'] ) . 'wpo_wcpdf_tmp/';
-					if ( ! is_dir( $tmp_dir ) ) {
-						wp_mkdir_p( $tmp_dir );
-					}
-					// The unique suffix prevents two concurrent sends from
-				// overwriting each other's temporary invoice.
-				$tmp_invoice_path = $tmp_dir . 'invoice-' . $order->get_id() . '-' . uniqid( '', true ) . '.pdf';
-					$pdf_content      = $invoice->get_pdf();
-					if ( $pdf_content ) {
-						// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
-						file_put_contents( $tmp_invoice_path, $pdf_content );
-						if ( file_exists( $tmp_invoice_path ) ) {
-							$attachments[] = $tmp_invoice_path;
-						}
-					}
-				}
-			}
-		} catch ( \Exception $e ) {
-			// Invoice generation failed — send email without invoice attachment.
-			$tmp_invoice_path = '';
+		// Attach the WCPDF invoice if possible. The invoice is a bonus, the
+		// customer mail is not: rendering it has crashed whole jobs before
+		// (#4673, 09/2026: oversized PNG logo, PHP memory exhausted), and a
+		// memory fatal cannot be caught. See maybe_render_invoice().
+		$tmp_invoice_path = $this->maybe_render_invoice( $order );
+		if ( $tmp_invoice_path ) {
+			$attachments[] = $tmp_invoice_path;
 		}
 
 		// Build email body with attachments section
